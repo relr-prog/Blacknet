@@ -1,0 +1,58 @@
+/* Settings & Privacy page.
+   chrome.css styles #settings and #panel as floating dialogs. This page shows
+   the very same markup as the document body, so only the dialog-specific rules
+   are neutralised here -- every control style is inherited from chrome.css, so
+   the two halves look exactly as they did in the chrome frame. */
+
+html,
+body {
+  overflow: auto;
+  /* The chrome frame is click-only, but this page carries read-only values,
+     hostnames and a service log that people need to select and copy. */
+  user-select: auto;
+}
+
+#settings,
+#panel {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: 780px;
+  max-height: none;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+#settings[hidden],
+#panel[hidden] {
+  display: none;
+}
+
+#settings nav,
+#panel nav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  background: var(--bg);
+}
+
+#settings-body,
+#panel-body {
+  max-height: none;
+  overflow-y: visible;
+}
+
+#status {
+  position: sticky;
+  bottom: 0;
+  display: block;
+  max-width: none;
+  margin: 0 auto;
+  padding: 6px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}

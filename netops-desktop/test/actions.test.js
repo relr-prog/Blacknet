@@ -183,3 +183,49 @@ test("no rotator endpoint means no rotator actions at all", () => {
   assert.equal(actions["netops:rotator:set"], undefined);
   assert.equal(actions["netops:rotator:status"], undefined);
 });
+
+test("the internal-page action passes the name and options straight through", () => {
+  // tabs.js owns the allowlist; this only checks that the route reaches it and
+  // does not quietly rewrite what the renderer asked for.
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
+  const seen = [];
+  const actions = createActions({
+    tabs: {
+      sessionCookies: async () => [],
+      openInternalPage: async (name, options) => {
+        seen.push({ name, options });
+        return { id: 1, internalPage: name };
+      },
+    },
+    settings: new Settings({ userDataPath }),
+    account: { current: { authenticated: true, isAdmin: true } },
+  });
+
+  return actions["netops:tabs:internal"]("settings", { view: "cookies" }).then((result) => {
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].name, "settings");
+    assert.deepEqual(seen[0].options, { view: "cookies" });
+    assert.equal(result.internalPage, "settings");
+  });
+});
+
+test("the internal-page action defaults to no options", () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
+  const seen = [];
+  const actions = createActions({
+    tabs: {
+      sessionCookies: async () => [],
+      openInternalPage: async (name, options) => {
+        seen.push(options);
+        return null;
+      },
+    },
+    settings: new Settings({ userDataPath }),
+    account: { current: { authenticated: true, isAdmin: true } },
+  });
+
+  // A renderer is allowed to send nothing at all here, so this must not throw.
+  return actions["netops:tabs:internal"]("settings").then(() => {
+    assert.deepEqual(seen[0], {});
+  });
+});

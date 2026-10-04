@@ -8,6 +8,8 @@
 const { WebContentsView, session } = require("electron");
 const path = require("path");
 
+const { internalPage, RENDERER_DIR } = require("./internal-pages");
+
 const CHROME_HEIGHT = 92;
 
 // Schemes Chromium resolves internally; they never reach the network, so the
@@ -16,14 +18,17 @@ const NON_NETWORK_SCHEME = /^(about|data|blob|chrome|chrome-extension|devtools):
 
 // The shell's own UI files. These are the only file:// URLs allowed to load: the
 // URL policy refuses file: everywhere else, and a remote page cannot reach these
-// paths anyway (Chromium blocks file:// from http(s) on its own).
-const RENDERER_DIR = path.join(__dirname, "..", "renderer");
+// paths anyway (Chromium blocks file:// from http(s) on its own). internal-pages
+// resolves the same directory and re-exports it.
 // The shell also loads its own icon set from here (top bar brand mark).
 const ASSETS_DIR = path.join(__dirname, "..", "..", "assets");
 // The password-capture hook. This is the single, deliberate exception to the
 // "no preload in a tab" rule below; it is loaded only when the password manager
 // is actually available and exposes a single one-way report() function.
 const PASSWORD_HOOK = path.join(__dirname, "..", "preload", "password-hook.js");
+// The full bridge. Attached to the chrome view and to the internal pages below,
+// and to nothing else.
+const FULL_PRELOAD = path.join(__dirname, "..", "preload", "preload.js");
 
 // Pages emit plenty of console noise that is not our problem and would train the
 // operator to ignore the log. Only things that look like real faults are kept.
@@ -80,11 +85,23 @@ class TabManager {
       blocked: tab.blockedCount,
       audioMuted: wc.isAudioMuted(),
       proxy: tab.proxy || null,
+      // Set only for the shell's own pages, so the chrome can tell that closing
+      // Settings is what should lock the vault again.
+      internalPage: tab.internalPage || null,
     };
   }
 
   active() {
     return this.describe(this.tabs.get(this.activeId));
+  }
+
+  // The shell's own pages, so main can push the saved appearance to them: they
+  // are separate documents from the chrome and do not inherit its CSS.
+  internalViews() {
+    return this.order
+      .map((id) => this.tabs.get(id))
+      .filter((tab) => tab && tab.internalPage)
+      .map((tab) => tab.view);
   }
 
   // Only the main process may touch a view, and only the smoke test asks for one.
@@ -171,6 +188,54 @@ class TabManager {
   }
 
   create({ profile, url, active = true } = {}) {
+    // The capture hook is attached here instead of unconditionally, so a browser
+    // that is not capturing passwords keeps exactly the old security posture:
+    // no preload at all in a page that loads untrusted content.
+    const tab = this.#createTab({ profile, active, preload: this.captureEnabled() ? PASSWORD_HOOK : undefined });
+    this.navigate(tab.id, url || this.config.newTabUrl);
+    return this.describe(tab);
+  }
+
+  // Settings and Privacy are local pages of the shell shown in an ordinary tab.
+  // There is one tab per name: asking again focuses the tab that is already
+  // there rather than stacking copies, and the requested view is re-applied so
+  // the toolbar always lands on the same half.
+  async openInternalPage(name, { active = true, view } = {}) {
+    const page = internalPage(name);
+    if (!page) throw new Error(`unknown internal page ${name}`);
+
+    const hash = typeof view === "string" && view ? view.replace(/^#/, "") : "";
+
+    let tab = null;
+    for (const id of this.order) {
+      const existing = this.tabs.get(id);
+      if (existing && existing.internalPage === name) {
+        tab = existing;
+        break;
+      }
+    }
+
+    if (!tab) {
+      tab = this.#createTab({ active, preload: FULL_PRELOAD, pageTheme: false });
+      tab.internalPage = name;
+      tab.title = page.title;
+    }
+    tab.pendingUrl = path.basename(page.file, ".html");
+    if (active) this.activate(tab.id);
+    this.#broadcast();
+
+    await tab.view.webContents.loadFile(page.file, hash ? { hash } : undefined).catch((error) => {
+      // Closing a tab tears its view down mid-load; that is not a load failure.
+      if (!this.tabs.has(tab.id)) return;
+      this.log(`tab ${tab.id} internal page failed: ${error.message}`);
+    });
+    return this.describe(tab);
+  }
+
+  // Builds a tab view and registers it. preload is decided by the caller, which
+  // is the single place the "no bridge in a page that loads untrusted content"
+  // rule is applied.
+  #createTab({ profile, active = true, preload, pageTheme = true }) {
     if (this.tabs.size >= this.config.maxTabs) {
       throw new Error(`tab limit reached (${this.config.maxTabs})`);
     }
@@ -182,10 +247,6 @@ class TabManager {
     this.#installBlocking(tabSession, tabProfile);
     this.#applyPrivacy(tabSession);
 
-    // The capture hook is attached here instead of unconditionally, so a browser
-    // that is not capturing passwords keeps exactly the old security posture:
-    // no preload at all in a page that loads untrusted content.
-    const capture = this.captureEnabled();
     const view = new WebContentsView({
       webPreferences: {
         partition: this.partitionFor(tabProfile),
@@ -193,12 +254,13 @@ class TabManager {
         nodeIntegration: false,
         sandbox: true,
         spellcheck: false,
-        // No preload here, deliberately: this view loads untrusted pages, and a
-        // bridge in it would hand every site the control plane. The chrome view
-        // is the only renderer that gets preload.js. The one exception is the
-        // password hook above, which exposes a single report() call and only
-        // while the password manager is switched on for a signed-in account.
-        preload: capture ? PASSWORD_HOOK : undefined,
+        // Nothing here loads untrusted content, so no preload is the safe
+        // default for a normal tab. The chrome view is the only renderer that
+        // always gets preload.js, and the password hook above is the one
+        // deliberate exception, exposing a single report() call and only while
+        // the password manager is switched on for a signed-in account.
+        // Internal pages from the table above get the full bridge.
+        preload,
         webSecurity: true,
         allowRunningInsecureContent: false,
       },
@@ -211,9 +273,10 @@ class TabManager {
       session: tabSession,
       view,
       title: "New tab",
-      pendingUrl: url || this.config.newTabUrl,
+      pendingUrl: this.config.newTabUrl,
       blockedCount: 0,
       proxy: null,
+      internalPage: null,
     };
     this.tabs.set(id, tab);
     this.order.push(id);
@@ -221,14 +284,16 @@ class TabManager {
     this.window.contentView.addChildView(view);
     this.#wireTab(tab);
     this.#applyProxy(tab);
-    this.#applyTheme(tab);
+    // The page theme restyles content with !important rules. The shell's own
+    // pages are not content: they follow palette.css and the saved appearance,
+    // so they must not be handed the reading theme.
+    if (pageTheme) this.#applyTheme(tab);
 
     if (active) this.activate(id);
     else this.#layout();
 
-    this.navigate(id, url || this.config.newTabUrl);
     this.#broadcast();
-    return this.describe(tab);
+    return tab;
   }
 
   #wireTab(tab) {

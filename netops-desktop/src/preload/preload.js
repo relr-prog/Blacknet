@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("netops", {
     reload: (id, hard) => ipcRenderer.invoke("netops:tabs:reload", id, hard),
     stop: (id) => ipcRenderer.invoke("netops:tabs:stop", id),
     mute: (id, muted) => ipcRenderer.invoke("netops:tabs:mute", id, muted),
+    // Opens a local page of the shell in a tab, optionally on a given view.
+    internal: (name, options) => ipcRenderer.invoke("netops:tabs:internal", name, options),
   },
 
   // --- privacy ------------------------------------------------------------

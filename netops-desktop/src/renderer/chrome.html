@@ -40,33 +40,9 @@
       <button type="button" id="settings-btn" title="Settings" aria-label="Settings">Settings</button>
     </form>
 
-    <dialog id="panel">
-      <header>
-        <strong id="panel-title">Privacy</strong>
-        <button type="button" id="panel-close" aria-label="Close">&#10005;</button>
-      </header>
-      <nav>
-        <button type="button" data-view="cookies" class="active">Cookies</button>
-        <button type="button" data-view="cache">Cache</button>
-        <button type="button" data-view="pool">Proxy pool</button>
-        <button type="button" data-view="service">Service</button>
-      </nav>
-      <div id="panel-body"></div>
-    </dialog>
-
-    <dialog id="settings">
-      <header>
-        <strong id="settings-title">Settings</strong>
-        <button type="button" id="settings-close" aria-label="Close">&#10005;</button>
-      </header>
-      <nav>
-        <button type="button" data-section="appearance" class="active">Appearance</button>
-        <button type="button" data-section="network">Network</button>
-        <button type="button" data-section="account">Account</button>
-        <button type="button" data-section="passwords">Passwords</button>
-      </nav>
-      <div id="settings-body"></div>
-    </dialog>
+    <!-- Settings and Privacy used to be dialogs here. They now open as a page of
+         the shell in an ordinary tab (renderer/pages/settings.html), so nothing
+         floats over the browser any more. -->
 
     <!-- The save-password prompt. Exactly two answers, as asked for: save it or
          do it later. It never shows the password itself. -->

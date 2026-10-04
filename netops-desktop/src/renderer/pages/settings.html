@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Local only, like the chrome frame: no remote anything, no inline script. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;"
+    />
+    <title>Settings &amp; Privacy - BlackNet</title>
+    <!-- chrome.css is reused unchanged so the controls keep their exact look.
+         settings.css only re-lays-out the pieces the chrome used to show as
+         floating dialogs. -->
+    <link rel="stylesheet" href="../chrome.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <!-- Both halves of the old chrome dialogs live here. One is shown at a time;
+         the hash decides which, so the toolbar can open this page already on
+         Privacy. -->
+    <section id="settings">
+      <header>
+        <strong id="settings-title">Settings</strong>
+      </header>
+      <nav>
+        <button type="button" data-section="appearance" class="active">Appearance</button>
+        <button type="button" data-section="network">Network</button>
+        <button type="button" data-section="account">Account</button>
+        <button type="button" data-section="passwords">Passwords</button>
+        <button type="button" data-section="privacy" data-jump="privacy">Privacy</button>
+      </nav>
+      <div id="settings-body"></div>
+    </section>
+
+    <section id="panel" hidden>
+      <header>
+        <strong id="panel-title">Privacy</strong>
+      </header>
+      <nav>
+        <button type="button" data-view="cookies" class="active">Cookies</button>
+        <button type="button" data-view="cache">Cache</button>
+        <button type="button" data-view="pool">Proxy pool</button>
+        <button type="button" data-view="service">Service</button>
+      </nav>
+      <div id="panel-body"></div>
+    </section>
+
+    <!-- The chrome kept this inside the address bar; the page needs its own. -->
+    <span id="status" aria-live="polite"></span>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

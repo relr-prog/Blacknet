@@ -107,7 +107,7 @@ function buildFeatureModules(userData, browserConfig, port) {
   // separate view with its own CSS) and the C++ page theme. Settings#patch
   // already did the native side and notifies here.
   settings.subscribe((values) => {
-    applyAppearanceToChrome();
+    applyAppearance();
     sendToChrome("netops:settings", values);
   });
 
@@ -194,7 +194,7 @@ async function createWindow() {
   attachPasswordHook();
 
   // Paint the chrome with the saved appearance before it asks for anything.
-  applyAppearanceToChrome();
+  applyAppearance();
 
   // Chrome owns the top strip; the browser views sit underneath it.
   chromeView = new WebContentsView({
@@ -260,11 +260,18 @@ function layoutChrome() {
   chromeView.setBounds({ x: 0, y: 0, width, height: CHROME_HEIGHT });
 }
 
-// The chrome is a separate view with its own document, so the saved colours are
-// pushed to it as CSS custom properties and applied on its root element.
-function applyAppearanceToChrome() {
-  if (!chromeView || chromeView.webContents.isDestroyed() || !settings) return;
-  chromeView.webContents
+// The chrome and the Settings page are separate documents with their own CSS, so
+// the saved colours are pushed to whichever of them currently exist. Neither
+// inherits anything from the other.
+function applyAppearance() {
+  applyAppearanceTo(chromeView);
+  if (!tabs) return;
+  for (const view of tabs.internalViews()) applyAppearanceTo(view);
+}
+
+function applyAppearanceTo(view) {
+  if (!view || view.webContents.isDestroyed() || !settings) return;
+  view.webContents
     .executeJavaScript(
       `(${appearanceScript.toString()})(${JSON.stringify({
         ...settings.cssVariables(),

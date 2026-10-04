@@ -82,15 +82,6 @@ async function chromeState(view) {
     url: document.getElementById('url').value,
     titles: [...document.querySelectorAll('#tabstrip .tab .title')].map((n) => n.textContent),
     status: document.getElementById('status').textContent,
-    panelOpen: document.getElementById('panel').open,
-    view: document.querySelector('#panel nav button.active')?.dataset.view || null,
-    pills: document.querySelectorAll('#panel-body .pill').length,
-    rows: document.querySelectorAll('#panel-body tr').length,
-    empty: document.querySelectorAll('#panel-body .empty').length,
-    settingsOpen: document.getElementById('settings').open,
-    settingsSection: document.querySelector('#settings nav button.active')?.dataset.section || null,
-    settingsRows: document.querySelectorAll('#settings-body .setting').length,
-    settingsLocked: document.querySelectorAll('#settings-body .locked').length,
     offerHidden: document.getElementById('offer').hidden,
     offerButtons: [...document.querySelectorAll('#offer .actions button')].map((n) => n.textContent),
     theme: document.documentElement.dataset.theme || null,
@@ -99,6 +90,26 @@ async function chromeState(view) {
       const img = document.getElementById('brand');
       return img ? { w: img.naturalWidth, h: img.naturalHeight } : null;
     })(),
+  }))()`);
+}
+
+// Settings and Privacy are a page of the shell in a tab now, so they are read
+// from that tab's view rather than from the chrome frame. Counted across both
+// halves because the page shows one of them at a time.
+async function pageState(view) {
+  return view.webContents.executeJavaScript(`(() => ({
+    hash: location.hash,
+    title: document.title,
+    settingsVisible: !document.getElementById('settings').hidden,
+    panelVisible: !document.getElementById('panel').hidden,
+    section: document.querySelector('#settings nav button.active')?.dataset.section || null,
+    view: document.querySelector('#panel nav button.active')?.dataset.view || null,
+    rows: document.querySelectorAll('.setting').length,
+    pills: document.querySelectorAll('.pill').length,
+    tableRows: document.querySelectorAll('table tr').length,
+    empty: document.querySelectorAll('.empty').length,
+    locked: document.querySelectorAll('.locked').length,
+    status: document.getElementById('status').textContent,
   }))()`);
 }
 
@@ -121,9 +132,14 @@ async function paintedSurfaces(view) {
     return {
       bg: getComputedStyle(document.body).backgroundColor,
       text: getComputedStyle(document.body).color,
-      panel: style('#panel'),
+      panel: style('#settings'),
       activeTab: style('#tabstrip .tab.active'),
       inactiveTab: style('#tabstrip .tab:not(.active)'),
+      // What the renderer itself believes, so a mismatch between the emulated
+      // preference and what light-dark() resolved is visible rather than guessed.
+      scheme: getComputedStyle(document.documentElement).colorScheme,
+      prefersDark: matchMedia('(prefers-color-scheme: dark)').matches,
+      bgVar: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || null,
     };
   })()`);
 }
@@ -262,37 +278,67 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       ui.brand ? `${ui.brand.w}x${ui.brand.h}` : "missing #brand",
     );
 
-    // Open the privacy panel: exercises chrome.js, the bridge and the C++ jar.
+    // Privacy opens as a tab: exercises chrome.js, tabs.js, the bridge and the
+    // C++ jar together.
+    const tabsBeforePrivacy = (await call("netops:tabs:list")).length;
     await chromeView.webContents.executeJavaScript("document.getElementById('inspect').click()");
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const state = await chromeState(chromeView);
-      if (state.panelOpen && state.pills > 0) break;
+    let settingsTab = null;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const list = await call("netops:tabs:list");
+      settingsTab = list.find((tab) => tab.internalPage === "settings") || null;
+      if (settingsTab) break;
       await sleep(250);
     }
-    const cookieUi = await chromeState(chromeView);
-    check("privacy panel opens", cookieUi.panelOpen === true);
+    check(
+      "privacy opens a tab",
+      Boolean(settingsTab),
+      settingsTab ? `tab ${settingsTab.id} titled "${settingsTab.title}"` : "no settings tab",
+    );
+    check(
+      "the privacy tab opened instead of a copy",
+      (await call("netops:tabs:list")).length === tabsBeforePrivacy + 1,
+      `${tabsBeforePrivacy} -> ${(await call("netops:tabs:list")).length}`,
+    );
+
+    const pageView = getViews().tab(settingsTab.id);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const state = await pageState(pageView);
+      if (state.panelVisible && state.pills > 0) break;
+      await sleep(250);
+    }
+    const cookieUi = await pageState(pageView);
+    check(
+      "privacy page opens on Cookies",
+      cookieUi.panelVisible === true && cookieUi.view === "cookies",
+      `panel ${cookieUi.panelVisible}, view ${cookieUi.view}, hash ${cookieUi.hash}`,
+    );
     // An empty jar is a legitimate result: it must still render the summary and
-    // say so, rather than leaving a blank panel.
+    // say so, rather than leaving a blank page.
     check(
       "cookie report rendered",
-      cookieUi.pills > 0 && (cookieUi.rows > 1 || cookieUi.empty === 1),
-      `${cookieUi.pills} pill(s), ${cookieUi.rows} row(s), ${cookieUi.empty} empty notice(s)`,
+      cookieUi.pills > 0 && (cookieUi.tableRows > 1 || cookieUi.empty === 1),
+      `${cookieUi.pills} pill(s), ${cookieUi.tableRows} row(s), ${cookieUi.empty} empty notice(s)`,
     );
 
     // The cache view has real data, so it must produce actual table rows.
-    await chromeView.webContents.executeJavaScript(
+    await pageView.webContents.executeJavaScript(
       "document.querySelector('#panel nav button[data-view=cache]').click()",
     );
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const state = await chromeState(chromeView);
-      if (state.view === "cache" && state.rows > 1) break;
+      const state = await pageState(pageView);
+      if (state.view === "cache" && state.tableRows > 1) break;
       await sleep(250);
     }
-    const cacheUi = await chromeState(chromeView);
+    const cacheUi = await pageState(pageView);
     check(
       "cache table rendered",
-      cacheUi.view === "cache" && cacheUi.rows > 1,
-      `${cacheUi.rows} row(s) in the ${cacheUi.view} view`,
+      cacheUi.view === "cache" && cacheUi.tableRows > 1,
+      `${cacheUi.tableRows} row(s) in the ${cacheUi.view} view`,
+    );
+    check(
+      "the page records the view in the hash",
+      cacheUi.hash === "#cache",
+      `hash ${cacheUi.hash}`,
     );
 
     const chromeShot = await capture(getViews().chrome, "smoke-chrome.png");
@@ -385,51 +431,70 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     const offerBefore = await call("netops:passwords:offers");
     check("no password offers at rest", Array.isArray(offerBefore) && offerBefore.length === 0);
 
-    // Open the settings dialog and walk its sections the way a person would.
+    // Settings opens the same page: the tab Privacy already made, focused and
+    // moved across to Appearance rather than stacked into a second copy.
+    const tabsBeforeSettings = (await call("netops:tabs:list")).length;
     await chromeView.webContents.executeJavaScript("document.getElementById('settings-btn').click()");
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const current = await chromeState(chromeView);
-      if (current.settingsOpen && current.settingsSection === "appearance") break;
+    let focused = null;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const list = await call("netops:tabs:list");
+      const found = list.find((tab) => tab.internalPage === "settings") || null;
+      if (found && found.id === settingsTab.id && list.length === tabsBeforeSettings) {
+        focused = found;
+        break;
+      }
       await sleep(250);
     }
-    const settingsUi = await chromeState(chromeView);
     check(
-      "settings dialog opens on Appearance",
-      settingsUi.settingsOpen === true && settingsUi.settingsSection === "appearance",
-      `open ${settingsUi.settingsOpen}, section ${settingsUi.settingsSection}`,
+      "settings reuses the tab privacy opened",
+      Boolean(focused),
+      focused
+        ? `tab ${focused.id}`
+        : `${tabsBeforeSettings} -> ${(await call("netops:tabs:list")).length} tab(s)`,
+    );
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const state = await pageState(pageView);
+      if (state.settingsVisible && state.section === "appearance") break;
+      await sleep(250);
+    }
+    const settingsUi = await pageState(pageView);
+    check(
+      "settings page opens on Appearance",
+      settingsUi.settingsVisible === true && settingsUi.section === "appearance",
+      `visible ${settingsUi.settingsVisible}, section ${settingsUi.section}`,
     );
     check(
       "appearance controls rendered",
-      settingsUi.settingsRows >= 4,
-      `${settingsUi.settingsRows} setting row(s)`,
+      settingsUi.rows >= 4,
+      `${settingsUi.rows} setting row(s)`,
     );
 
     for (const section of ["network", "account", "passwords"]) {
-      await chromeView.webContents.executeJavaScript(
+      await pageView.webContents.executeJavaScript(
         `document.querySelector('#settings nav button[data-section=${section}]').click()`,
       );
       for (let attempt = 0; attempt < 20; attempt += 1) {
-        const current = await chromeState(chromeView);
-        if (current.settingsSection === section && (current.settingsRows > 0 || current.settingsLocked > 0)) {
+        const current = await pageState(pageView);
+        if (current.section === section && (current.rows > 0 || current.locked > 0)) {
           break;
         }
         await sleep(250);
       }
-      const sectionUi = await chromeState(chromeView);
+      const sectionUi = await pageState(pageView);
       check(
         `${section} section rendered`,
-        sectionUi.settingsSection === section &&
-          (sectionUi.settingsRows > 0 || sectionUi.settingsLocked > 0),
-        `${sectionUi.settingsRows} row(s), ${sectionUi.settingsLocked} lock notice(s)`,
+        sectionUi.section === section && (sectionUi.rows > 0 || sectionUi.locked > 0),
+        `${sectionUi.rows} row(s), ${sectionUi.locked} lock notice(s)`,
       );
     }
 
-    const lockedUi = await chromeState(chromeView);
+    const lockedUi = await pageState(pageView);
     if (!passwordStatus.available) {
       check(
         "locked features show the login notice",
-        lockedUi.settingsLocked > 0,
-        `${lockedUi.settingsLocked} lock notice(s)`,
+        lockedUi.locked > 0,
+        `${lockedUi.locked} lock notice(s)`,
       );
     }
 
@@ -448,18 +513,32 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       JSON.stringify(offerUi.offerButtons),
     );
 
-    const settingsShot = await capture(getViews().chrome, "smoke-settings.png");
+    // The Settings tab must follow the day/night setting as well, since it links
+    // the same stylesheet.
+    const pageSchemes = await schemeCheck(pageView);
     check(
-      "settings dialog painted",
+      "settings page follows the OS colour scheme",
+      pageSchemes.dark.bg !== pageSchemes.light.bg,
+      `dark ${pageSchemes.dark.bg} (prefersDark ${pageSchemes.dark.prefersDark}, ${pageSchemes.dark.scheme}), ` +
+        `light ${pageSchemes.light.bg} (prefersDark ${pageSchemes.light.prefersDark}, ${pageSchemes.light.scheme})`,
+    );
+
+    const settingsShot = await capture(pageView, "smoke-settings.png");
+    check(
+      "settings page painted",
       settingsShot.width > 100 && settingsShot.height > 20,
       `${settingsShot.width}x${settingsShot.height} -> ${settingsShot.path}`,
     );
 
-    // Closing the dialog must not leave an unlocked vault behind.
-    await chromeView.webContents.executeJavaScript("document.getElementById('settings-close').click()");
-    await sleep(300);
-    const closedUi = await chromeState(chromeView);
-    check("settings dialog closes", closedUi.settingsOpen === false);
+    // Closing the Settings tab must not leave an unlocked vault behind.
+    await call("netops:tabs:close", settingsTab.id);
+    await sleep(400);
+    const afterClose = await call("netops:tabs:list");
+    check(
+      "settings tab closes",
+      !afterClose.some((tab) => tab.internalPage === "settings"),
+      `${afterClose.length} tab(s) left`,
+    );
 
     // A second tab proves the view tree re-lays out without crashing.
     const created = await call("netops:tabs:create", {});

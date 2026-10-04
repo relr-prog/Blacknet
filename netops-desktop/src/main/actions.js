@@ -91,6 +91,9 @@ function createActions({ core, tabs, service, settings, account, passwords, rota
     "netops:tabs:reload": (id, hard) => tabs.reload(id, hard),
     "netops:tabs:stop": (id) => tabs.stop(id),
     "netops:tabs:mute": (id, muted) => tabs.setMuted(id, muted),
+    // Local pages of the shell, shown in a tab. The page name is validated
+    // against a fixed table in tabs.js.
+    "netops:tabs:internal": (name, options) => tabs.openInternalPage(name, options || {}),
 
     // --- privacy ----------------------------------------------------------
     "netops:cookies:report": (profile) => tabs.cookieReport(profile),
