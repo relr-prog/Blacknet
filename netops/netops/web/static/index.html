@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlackNet — rotating proxy control panel</title>
+<link rel="icon" href="/static/blacknet.png" type="image/png" sizes="64x64">
+<link rel="apple-touch-icon" href="/static/blacknet.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="toast" class="toast" hidden></div>
+
+<!-- ------------------------------------------------------------- auth gate -->
+<section id="gate" class="gate">
+  <div class="gate-card">
+    <div class="brand">
+      <span class="brand-mark"><img src="/static/blacknet.png" alt="" width="30" height="30"></span>
+      <div>
+        <h1>BlackNet</h1>
+        <p class="muted">rotating proxy control panel</p>
+      </div>
+    </div>
+
+    <div id="setup-banner" class="banner" hidden>
+      No account exists yet. The first account you create becomes the administrator.
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-auth="login" role="tab">Sign in</button>
+      <button class="tab" data-auth="signup" role="tab" id="signup-tab">Create account</button>
+      <button class="tab" data-auth="guest" role="tab" id="guest-tab">Guest</button>
+    </div>
+
+    <form id="auth-form" autocomplete="on">
+      <label id="username-label">Username
+        <input name="username" autocomplete="username" minlength="3" maxlength="32">
+      </label>
+      <label id="password-label">Password
+        <input name="password" type="password" autocomplete="current-password" minlength="10">
+      </label>
+      <p id="auth-error" class="error" hidden></p>
+      <button class="primary" type="submit">Continue</button>
+      <p class="muted small">Sessions use an HttpOnly cookie. Five failed attempts from the same
+        address trigger a 15 minute lockout.</p>
+    </form>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------- app -->
+<div id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="brand small">
+      <span class="brand-mark"><img src="/static/blacknet.png" alt="" width="30" height="30"></span>
+      <div><strong>BlackNet</strong><p class="muted small" id="host-name">—</p></div>
+    </div>
+    <nav id="nav">
+      <button data-view="monitor" class="active">Overview</button>
+      <button data-view="rotator">Rotation</button>
+      <button data-view="lookup">IP lookup</button>
+      <button data-view="scanner">Scanner</button>
+      <button data-view="tools">Cyber tools</button>
+      <button data-view="server" data-admin>Server</button>
+      <button data-view="audit">Audit log</button>
+      <button data-view="users" data-admin>Users</button>
+    </nav>
+    <div class="sidebar-foot">
+      <p class="muted small" id="whoami">—</p>
+      <button id="logout" class="ghost">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- overview -->
+    <section class="view" id="view-monitor">
+      <header class="view-head">
+        <h2>Overview</h2>
+        <div class="row-actions">
+          <span id="rotator-badge" class="badge">rotator: …</span>
+          <button id="refresh-monitor" class="ghost">Refresh</button>
+        </div>
+      </header>
+      <div class="grid stats">
+        <div class="card stat"><span class="label">CPU</span><strong id="stat-cpu">—</strong>
+          <div class="meter"><i id="bar-cpu"></i></div></div>
+        <div class="card stat"><span class="label">Memory</span><strong id="stat-mem">—</strong>
+          <div class="meter"><i id="bar-mem"></i></div></div>
+        <div class="card stat"><span class="label">Disk (root)</span><strong id="stat-disk">—</strong>
+          <div class="meter"><i id="bar-disk"></i></div></div>
+        <div class="card stat"><span class="label">Uptime</span><strong id="stat-uptime">—</strong>
+          <p class="muted small" id="stat-load">load —</p></div>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h3>Interfaces</h3>
+          <div id="net-list" class="mono small">—</div>
+        </div>
+        <div class="card">
+          <h3>Top processes (RSS)</h3>
+          <table class="table" id="proc-table"><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Pool summary</h3>
+        <div id="pool-summary" class="mono small">—</div>
+      </div>
+    </section>
+
+    <!-- rotation -->
+    <section class="view" id="view-rotator" hidden>
+      <header class="view-head">
+        <h2>Rotation</h2>
+        <div class="row-actions">
+          <select id="strategy" title="selection strategy">
+            <option>round_robin</option><option>random</option><option>weighted_random</option>
+            <option>least_used</option><option>fastest</option>
+          </select>
+          <button id="btn-start" data-admin class="ghost">Start</button>
+          <button id="btn-stop" data-admin class="ghost">Stop</button>
+          <button id="btn-restart" data-admin class="ghost">Restart</button>
+        </div>
+      </header>
+      <div class="grid two">
+        <div class="card">
+          <h3>Listeners</h3>
+          <div id="listeners" class="mono small">—</div>
+          <h3>Rotation test</h3>
+          <div class="row-actions">
+            <button id="btn-rotate-test" class="ghost">Send 6 requests through the proxy</button>
+          </div>
+          <div id="rotate-out" class="mono small muted">no results yet</div>
+        </div>
+        <div class="card">
+          <h3>Upstreams</h3>
+          <form id="upstream-form" data-admin class="inline-form">
+            <input name="line" placeholder="host:port:user:pass or socks5://host:port" required>
+            <input name="tier" type="number" min="0" max="9" value="1" title="tier">
+            <button class="primary" type="submit">Add</button>
+          </form>
+          <div class="row-actions">
+            <button id="btn-probe" class="ghost">Probe exit IPs</button>
+            <button id="btn-restore" data-admin class="ghost">Restore config pool</button>
+          </div>
+          <table class="table" id="upstream-table"><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Burp Suite</h3>
+        <p class="muted small">Point Burp at these upstreams directly, or send all of its traffic
+          through the rotating listener above.</p>
+        <button id="btn-burp" class="ghost">Load export</button>
+        <pre id="burp-out" class="pre"></pre>
+      </div>
+    </section>
+
+    <!-- lookup -->
+    <section class="view" id="view-lookup" hidden>
+      <header class="view-head"><h2>IP lookup</h2></header>
+      <div class="card">
+        <form id="lookup-form" class="inline-form">
+          <input name="ip" placeholder="8.8.8.8 or https://1.1.1.1/" required>
+          <button class="primary" type="submit">Look up</button>
+        </form>
+        <div id="lookup-out" class="mono small muted">no lookup yet</div>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h3>My egress address</h3>
+          <div class="row-actions">
+            <button data-egress="direct" class="ghost">Direct</button>
+            <button data-egress="gateway" class="ghost">Through rotating proxy</button>
+            <button data-egress="socks5" class="ghost">Through SOCKS5 listener</button>
+          </div>
+          <pre id="egress-out" class="pre"></pre>
+        </div>
+        <div class="card">
+          <h3>RDAP / whois</h3>
+          <form id="rdap-form" class="inline-form">
+            <input name="ip" placeholder="8.8.8.8" required>
+            <button class="ghost" type="submit">Lookup</button>
+          </form>
+          <pre id="rdap-out" class="pre"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- scanner -->
+    <section class="view" id="view-scanner" hidden>
+      <header class="view-head">
+        <h2>Port scanner</h2>
+        <span id="scan-policy" class="badge">policy —</span>
+      </header>
+      <div class="card">
+        <p class="warn small">Only targets listed in <code>netops.toml</code> may be scanned.
+          The panel refuses everything else.</p>
+        <form id="scan-form" class="inline-form">
+          <input name="target" placeholder="127.0.0.1" required>
+          <input name="ports" value="1-1024" placeholder="22,80,443,8000-8100" required>
+          <select name="engine"><option value="builtin">built-in (fast, safe)</option>
+            <option value="nmap">nmap</option></select>
+          <button class="primary" type="submit">Scan</button>
+        </form>
+        <div id="scan-out" class="mono small muted">no scan yet</div>
+      </div>
+    </section>
+
+    <!-- tools -->
+    <section class="view" id="view-tools" hidden>
+      <header class="view-head"><h2>Cyber tools</h2></header>
+      <div class="grid two" id="tool-grid"></div>
+    </section>
+
+    <!-- server -->
+    <section class="view" id="view-server" hidden>
+      <header class="view-head">
+        <h2>Server control</h2>
+        <button id="btn-services" class="ghost">Refresh</button>
+      </header>
+      <div class="card">
+        <p class="warn small">Only allowlisted systemd units can be inspected or controlled.
+          Actions run through <code>sudo -n systemctl</code>.</p>
+        <table class="table" id="service-table"><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <h3>Journal</h3>
+        <form id="journal-form" class="inline-form">
+          <input name="unit" placeholder="unit (blank = host)">
+          <input name="lines" type="number" min="10" max="500" value="80">
+          <button class="ghost" type="submit">Tail</button>
+        </form>
+        <pre id="journal-out" class="pre"></pre>
+      </div>
+    </section>
+
+    <!-- audit -->
+    <section class="view" id="view-audit" hidden>
+      <header class="view-head">
+        <h2>Audit log</h2>
+        <div class="row-actions">
+          <label class="inline-check"><input type="checkbox" id="audit-mine"> only my actions</label>
+          <button id="btn-audit" class="ghost">Refresh</button>
+        </div>
+      </header>
+      <div class="card"><table class="table" id="audit-table"><tbody></tbody></table></div>
+    </section>
+
+    <!-- users -->
+    <section class="view" id="view-users" hidden>
+      <header class="view-head"><h2>Users</h2></header>
+      <div class="card"><table class="table" id="user-table"><tbody></tbody></table></div>
+    </section>
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+[Unit]
+Description=BlackNet desktop browser
+Documentation=https://electronjs.org
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/netops-desktop
+ExecStart=%h/projects/netops-desktop/node_modules/electron/dist/electron --no-sandbox --disable-gpu .
+# WSLg has no working GPU stack; without these the GPU process traps on init.
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=ELECTRON_DISABLE_SECURITY_WARNINGS=1
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=graphical-session.target

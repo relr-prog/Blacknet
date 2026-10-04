@@ -1,0 +1,27 @@
+[Unit]
+Description=netops dashboard (rotating proxy control panel)
+Documentation=file:///home/rel4ever/projects/netops/README.md
+After=network-online.target tor.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rel4ever
+WorkingDirectory=/home/rel4ever/projects/netops
+Environment=NETOPS_CONFIG=/home/rel4ever/projects/netops/netops.toml
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/rel4ever/projects/netops/.venv/bin/python -m netops
+Restart=on-failure
+RestartSec=5
+# the dashboard needs to read /proc and talk to systemctl through sudo -n
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/rel4ever/projects/netops/data /home/rel4ever/projects/netops/var
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netops
+
+[Install]
+WantedBy=multi-user.target

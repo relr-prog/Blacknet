@@ -1,0 +1,43 @@
+# Allow the netops dashboard to inspect and control exactly these units.
+# Install with:  sudo install -m 0440 deploy/netops-sudoers /etc/sudoers.d/netops
+# Then the panel's Server tab can call `sudo -n systemctl ...` without a password.
+#
+# Adjust the user name if you are not "rel4ever".
+
+rel4ever ALL=(root) NOPASSWD: \
+    /usr/bin/systemctl show netops.service *, \
+    /usr/bin/systemctl show rotator.service *, \
+    /usr/bin/systemctl show tor.service *, \
+    /usr/bin/systemctl show haproxy.service *, \
+    /usr/bin/systemctl show ssh.service *, \
+    /usr/bin/systemctl show nginx.service *, \
+    /usr/bin/systemctl start netops.service, \
+    /usr/bin/systemctl stop netops.service, \
+    /usr/bin/systemctl restart netops.service, \
+    /usr/bin/systemctl reload netops.service, \
+    /usr/bin/systemctl start rotator.service, \
+    /usr/bin/systemctl stop rotator.service, \
+    /usr/bin/systemctl restart rotator.service, \
+    /usr/bin/systemctl reload rotator.service, \
+    /usr/bin/systemctl start tor.service, \
+    /usr/bin/systemctl stop tor.service, \
+    /usr/bin/systemctl restart tor.service, \
+    /usr/bin/systemctl reload tor.service, \
+    /usr/bin/systemctl start haproxy.service, \
+    /usr/bin/systemctl stop haproxy.service, \
+    /usr/bin/systemctl restart haproxy.service, \
+    /usr/bin/systemctl reload haproxy.service, \
+    /usr/bin/systemctl start ssh.service, \
+    /usr/bin/systemctl stop ssh.service, \
+    /usr/bin/systemctl restart ssh.service, \
+    /usr/bin/systemctl reload ssh.service, \
+    /usr/bin/systemctl start nginx.service, \
+    /usr/bin/systemctl stop nginx.service, \
+    /usr/bin/systemctl restart nginx.service, \
+    /usr/bin/systemctl reload nginx.service, \
+    /usr/bin/journalctl -u netops.service *, \
+    /usr/bin/journalctl -u rotator.service *, \
+    /usr/bin/journalctl -u tor.service *, \
+    /usr/bin/journalctl -u haproxy.service *, \
+    /usr/bin/journalctl -u ssh.service *, \
+    /usr/bin/journalctl -u nginx.service *

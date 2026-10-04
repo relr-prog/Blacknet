@@ -1,0 +1,64 @@
+/* Tokens come from chrome.css (palette.css), which this page already loads. */
+body.crashed {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px;
+  color: var(--text);
+  background: var(--bg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.crashed main {
+  max-width: 34rem;
+}
+
+body.crashed .logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.9rem;
+  opacity: 0.9;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+body.crashed h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  color: var(--warn);
+}
+
+body.crashed p {
+  margin: 0 0 1rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+body.crashed dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+}
+
+body.crashed dt {
+  color: var(--muted);
+}
+
+body.crashed dd {
+  margin: 0;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+}
+
+body.crashed .hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}

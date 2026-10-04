@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self' data:;"
+    />
+    <title>Tab crashed</title>
+    <link rel="icon" href="../../assets/icons/blacknet-32.png" type="image/png" />
+    <link rel="stylesheet" href="chrome.css" />
+    <link rel="stylesheet" href="crashed.css" />
+  </head>
+  <body class="crashed">
+    <main>
+      <img class="logo" src="../../assets/icons/blacknet-64.png" alt="" width="56" height="56" />
+      <h1>This tab stopped working</h1>
+      <p>
+        The page's renderer process went away, so its memory was reclaimed. Your
+        tabs, cookies and history are untouched.
+      </p>
+      <dl>
+        <dt>Reason</dt>
+        <dd id="reason">unknown</dd>
+        <dt>Exit code</dt>
+        <dd id="code">-</dd>
+      </dl>
+      <p class="hint">Reload the tab to try again.</p>
+    </main>
+    <script src="crashed.js"></script>
+  </body>
+</html>

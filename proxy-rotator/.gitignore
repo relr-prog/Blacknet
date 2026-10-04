@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Pool state. Per-machine provider lists. The checked-in examples use
+# documentation IPs, but the format accepts user:pass@ endpoints and these files
+# are meant to be regenerated from a provider API, so they stay untracked.
+pools/
+*.jsonl
+
+# Local configuration and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
