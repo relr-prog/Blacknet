@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runtime data. This is where the live SQLite database lives, and it holds
+# users, password hashes, session fingerprints and the audit log. It must never
+# be committed: netops.db plus its -wal/-shm siblings are per-machine state.
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local configuration and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp

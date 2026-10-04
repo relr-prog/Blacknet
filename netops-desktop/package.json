@@ -1,0 +1,25 @@
+{
+  "name": "blacknet-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BlackNet desktop browser: Electron shell, C++ native engine, Python control plane",
+  "main": "src/main/main.js",
+  "scripts": {
+    "configure:native": "cmake -S native -B build -DCMAKE_BUILD_TYPE=Release",
+    "build:native": "cmake --build build --parallel",
+    "rebuild:native": "npm run configure:native && npm run build:native",
+    "test:core": "ctest --test-dir build --output-on-failure",
+    "test:addon": "node --test test/",
+    "test": "npm run test:contrast && npm run test:core && npm run test:addon",
+    "test:contrast": "python3 tools/check_contrast.py",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "smoke": "electron . --smoke"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "node-addon-api": "^8.3.0",
+    "node-gyp": "^11.0.0"
+  }
+}

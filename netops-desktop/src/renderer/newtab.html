@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Local page, no network, no script: a strict CSP keeps it that way. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self' data:;"
+    />
+    <title>New tab</title>
+    <link rel="icon" href="../../assets/icons/blacknet-32.png" type="image/png" />
+    <link rel="stylesheet" href="newtab.css" />
+  </head>
+  <body>
+    <main>
+      <img class="logo" src="../../assets/icons/blacknet-128.png" alt="" width="96" height="96" />
+      <h1>BlackNet</h1>
+      <p class="lead">
+        A private browser window. Pages load behind a C++ policy that refuses
+        private addresses, dangerous schemes and known trackers.
+      </p>
+
+      <section>
+        <h2>This tab</h2>
+        <dl>
+          <dt>Profile</dt>
+          <dd id="profile">default</dd>
+          <dt>Upstream</dt>
+          <dd id="proxy">direct connection</dd>
+          <dt>Blocked so far</dt>
+          <dd id="blocked">0</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Local</h2>
+        <ul>
+          <li><code>127.0.0.1:8787</code> &mdash; BlackNet control plane</li>
+          <li><code>127.0.0.1:8000</code> &mdash; API docs, when running</li>
+        </ul>
+      </section>
+
+      <p class="hint">
+        Type in the address bar above, or press <kbd>Ctrl</kbd>+<kbd>L</kbd>.
+      </p>
+    </main>
+  </body>
+</html>

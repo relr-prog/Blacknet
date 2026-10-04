@@ -1,0 +1,517 @@
+@import "palette.css";
+
+/* Every colour below resolves through palette.css (light-dark + color-scheme),
+   so the chrome follows the OS day/night setting with no JS. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+/* --- tab strip ---------------------------------------------------------- */
+#tabrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  background: var(--bg);
+  padding-left: 8px;
+}
+
+#brand {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-bottom: 5px;
+  image-rendering: auto;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+#tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  padding: 6px 8px 0;
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#tabstrip::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 200px;
+  min-width: 96px;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  /* Inactive tab sits on the page background, active tab on the panel colour:
+     the lightness step is what tells them apart, not the hue. */
+  background: var(--bg);
+  color: var(--muted);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.tab .title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab .close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
+.tab .badge {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--bad);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tab .spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- toolbar ------------------------------------------------------------ */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 52px;
+  padding: 0 8px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+#toolbar button,
+#panel button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+#toolbar button:hover,
+#panel button:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+#toolbar button[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 17px;
+  background: var(--surface);
+}
+
+.field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+#lock {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+#url {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  user-select: text;
+}
+
+#status {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+#status.error {
+  color: var(--bad);
+}
+
+/* --- settings dialog ----------------------------------------------------- */
+/* Shares the panel's shape. Settings is wider because it carries labels and
+   actions side by side. */
+#settings {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 620px;
+  max-height: 80vh;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 64px var(--shadow);
+}
+
+#settings::backdrop {
+  background: var(--scrim);
+}
+
+#settings header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+#settings header button {
+  min-width: 28px;
+  height: 26px;
+}
+
+#settings nav {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+
+#settings nav button {
+  font-size: 12px;
+}
+
+#settings nav button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#settings-body {
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  max-height: 60vh;
+  user-select: text;
+}
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting:last-of-type {
+  border-bottom: 0;
+}
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-label .hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#settings-body .field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+#settings-body select,
+#settings-body input[type="color"] {
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+}
+
+#settings-body input[type="color"] {
+  width: 52px;
+  height: 30px;
+  padding: 2px;
+}
+
+#settings-body input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+#settings-body button {
+  margin-top: 8px;
+}
+
+#settings-body .locked {
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--muted);
+}
+
+#settings-body .empty {
+  color: var(--muted);
+}
+
+.credential-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.credential {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  grid-template-areas: "who secret" "actions actions";
+  gap: 6px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.credential > div:first-child {
+  grid-area: who;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credential .secret {
+  grid-area: secret;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  color: var(--muted);
+}
+
+.credential .actions {
+  grid-area: actions;
+  display: flex;
+  gap: 6px;
+}
+
+.credential .actions button {
+  margin-top: 0;
+  font-size: 12px;
+}
+
+/* --- save-password prompt ------------------------------------------------- */
+/* Sits over the chrome rather than the page, so it is visible even while a site
+   is mid-redirect. Two buttons, no third option. */
+#offer {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 18px 48px var(--shadow);
+  z-index: 5;
+}
+
+#offer[hidden] {
+  display: none;
+}
+
+#offer-question {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+#offer-site {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#offer .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+#offer .actions button {
+  margin-top: 0;
+}
+
+/* --- panel -------------------------------------------------------------- */
+#panel {
+  position: fixed;
+  right: 12px;
+  top: 48px;
+  width: 460px;
+  max-height: 70vh;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 18px 48px var(--shadow);
+}
+
+#panel::backdrop {
+  background: var(--scrim);
+}
+
+#panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+#panel header button {
+  min-width: 28px;
+  height: 26px;
+}
+
+#panel nav {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+
+#panel nav button {
+  font-size: 12px;
+}
+
+#panel nav button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#panel-body {
+  padding: 12px;
+  max-height: 46vh;
+  overflow: auto;
+  user-select: text;
+}
+
+#panel-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+#panel-body th,
+#panel-body td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+#panel-body th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+#panel-body .empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.mono {
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 11px;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pill.ok {
+  color: var(--accent-ink);
+  background: var(--ok);
+}
+
+.pill.bad {
+  color: var(--accent-ink);
+  background: var(--bad);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}

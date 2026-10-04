@@ -1,0 +1,58 @@
+# proxy-rotator — rotating egress gateway
+#
+# One local listener, many interchangeable exit IPs.
+#   rotator serve -c rotator.toml
+#
+# Tier order is priority order: the first tier with a healthy, slot-free
+# upstream wins. Add as many tiers as you like.
+
+[gateway]
+host = "127.0.0.1"          # 0.0.0.0 to expose the gateway on the LAN
+port = 8888                 # HTTP + CONNECT proxy port
+socks_port = 1080           # SOCKS5 front end (0 disables)
+metrics_port = 9099         # /metrics and /status (0 disables)
+strategy = "round_robin"    # round_robin | random | weighted_random | least_used | fastest
+sticky_ttl = 300.0          # how long X-Rotator-Sticky pins a client to one IP
+sticky_by_peer = false      # true = pin every client to one IP without the header
+connect_timeout = 15.0
+max_attempts = 3            # retry on a different upstream when one fails
+idle_timeout = 300.0
+# username = "scraper"      # require Proxy-Authorization from your clients
+# password = "change-me"
+
+[health]
+url = "https://api.ipify.org?format=json"
+interval = 60.0
+timeout = 15.0
+concurrency = 20
+quarantine_secs = 90.0
+resolve_geo = true          # resolve exit IP -> country so X-Rotator-Country works
+geo_template = "https://ipwho.is/{ip}"
+
+# --- tier 1: paid residential provider (highest priority) ------------------
+[[tier]]
+name = "residential"
+strategy = "weighted_random"
+max_slots = 8
+files = ["pools/residential.txt"]
+
+# --- tier 2: datacenter proxies -------------------------------------------
+[[tier]]
+name = "datacenter"
+strategy = "round_robin"
+max_slots = 16
+files = ["pools/datacenter.txt"]
+
+# --- tier 3: Tor, fresh circuit per connection -----------------------------
+[[tier]]
+name = "tor"
+kind = "socks5"
+strategy = "random"
+inline = ["socks5://127.0.0.1:9050#tag=tor"]
+
+# --- tier 4: local egress (WireGuard peers bound per interface) ------------
+# Add one entry per wg interface: direct:10.8.0.7
+[[tier]]
+name = "local"
+strategy = "round_robin"
+inline = ["direct"]

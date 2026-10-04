@@ -1,0 +1,15 @@
+# Build output
+build/
+node_modules/
+native/build/
+dist/
+
+# Runtime state
+var/
+data/
+*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,86 @@
+# netops dashboard configuration
+# Scans and service control are opt-in: nothing touches the network until you
+# list the targets you are authorised to test.
+
+[server]
+host = "127.0.0.1"        # use 0.0.0.0 only behind an SSH tunnel or reverse proxy
+port = 8443
+session_ttl = 43200       # 12 hours
+secure_cookies = false    # true when you terminate TLS (Caddy/nginx) in front
+db_path = "data/netops.db"
+rotator_config = "../proxy-rotator/rotator.toml"
+
+[initial_admin]
+# Leave empty: the first visitor to /signup becomes admin and later signups
+# require an admin invitation. You can also set initial_password to bootstrap
+# an admin non-interactively (remove it afterwards).
+username = "admin"
+password = ""
+
+[server_control]
+# systemctl units the panel is allowed to inspect and control
+services_allowlist = [
+    "netops.service",
+    "rotator.service",
+    "tor.service",
+    "haproxy.service",
+    "ssh.service",
+    "nginx.service",
+]
+use_sudo = true            # uses `sudo -n systemctl`; grant NOPASSWD for these units
+
+[scanner]
+enabled = true
+allow_private_targets = true
+# Replace with the hosts you own or are authorised to test. Wildcards:
+#   "10.0.0.0/8"      -> CIDR entries are matched as literal strings only,
+#   "*.example.com"   -> suffix match, "*" -> allow everything (not recommended)
+allowed_targets = [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+]
+max_ports = 200
+max_concurrency = 64
+connect_timeout = 1.5
+max_runtime_seconds = 600
+nmap_enabled = true
+nmap_flags = ["-sT", "-T4", "--max-retries", "1"]
+tools_enabled = true
+tool_timeout = 30
+
+# --- built-in privacy browser ------------------------------------------------
+# A real Chromium (or Firefox) instance driven by the panel: tab manager,
+# cookie manager, cache manager and theming, exiting through the rotator.
+[browser]
+enabled = true
+engine = "chromium"              # chromium | firefox
+executable_path = ""             # e.g. /usr/bin/chromium for the Debian package
+headless = true                  # false shows a real window (needs WSLg)
+require_headless = false
+
+block_third_party_cookies = true
+resist_fingerprinting = true     # strips webrtc, fonts and canvas noise
+https_only = true
+disable_webrtc = true
+block_service_workers = false
+block_notifications = true
+ignore_https_errors = false
+no_sandbox = true                # chromium needs this inside WSL
+cache_enabled = false
+clear_on_close = true
+
+locale = "en-GB"
+timezone = "Europe/London"
+viewport_width = 1440
+viewport_height = 900
+prefers_dark = true
+permissions = []                 # e.g. ["geolocation"]
+
+max_tabs = 12
+max_tabs_per_user = 4
+idle_timeout = 1800
+navigation_timeout = 30.0
+# extra trackers to block, on top of the built-in list
+blocklist = ["t.me", "doubleclick.net"]
+extra_args = []

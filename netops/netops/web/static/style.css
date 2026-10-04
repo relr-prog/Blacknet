@@ -1,0 +1,150 @@
+/* BlackNet palette - see netops-desktop/src/renderer/palette.css for the
+   rationale. Two schemes, no pure black and no pure white:
+
+     Opsi A  Deep Slate Dark  bg #1E222A  panel #252B35  text #E1E4EA  accent #569CD6
+     Opsi B  Warm Off-White   bg #F4F5F7  panel #E5E7EB  text #1F2937  accent #0D9488
+
+   light-dark() resolves from `color-scheme`, so the OS preference
+   (prefers-color-scheme) switches the dashboard with no reload and no flash.
+   Contrast budget: body text >= 7:1 (AAA), status text >= 4.5:1 (AA),
+   control boundaries >= 3:1 (WCAG 1.4.11). Guarded by
+   netops-desktop/tools/check_contrast.py. */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f4f5f7, #1e222a);
+  --bg-2: light-dark(#e5e7eb, #252b35);
+  --card: light-dark(#fafbfc, #2b323d);
+  --line: light-dark(#d3d7de, #3a4250);
+  --line-strong: light-dark(#6b7280, #727e96);
+  --text: light-dark(#1f2937, #e1e4ea);
+  --muted: light-dark(#566173, #a9b2c0);
+  --accent: light-dark(#0d9488, #569cd6);
+  --accent-2: light-dark(#0a6e66, #4a8cc4);
+  --accent-ink: light-dark(#f2faf8, #0c1622);
+  --ok: light-dark(#2e7d4f, #6fbf73);
+  --warn: light-dark(#8a6a12, #d6b24c);
+  --bad: light-dark(#b3382e, #e06c62);
+  --shadow: light-dark(#1f29371f, #00000066);
+  --scrim: light-dark(#1f293733, #00000059);
+  --radius: 12px;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 600px at 20% -10%, var(--card) 0%, var(--bg) 55%);
+  color: var(--text);
+  font: 15px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+h1, h2, h3 { margin: 0 0 .4rem; font-weight: 650; letter-spacing: -.01em; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: .95rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+p { margin: .25rem 0; }
+.muted { color: var(--muted); }
+.small { font-size: .82rem; }
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+code { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+
+/* ------------------------------------------------------------------- gate */
+.gate { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; }
+.gate-card {
+  width: min(420px, 100%); background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; padding: 1.6rem; box-shadow: 0 30px 80px var(--shadow);
+}
+.brand { display: flex; gap: .8rem; align-items: center; margin-bottom: 1rem; }
+.brand-mark {
+  width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); font-size: 1.2rem;
+  overflow: hidden;
+}
+.brand-mark img { width: 30px; height: 30px; display: block; }
+.banner {
+  background: var(--card); border: 1px solid var(--accent); color: var(--accent);
+  padding: .6rem .8rem; border-radius: 10px; font-size: .85rem; margin-bottom: 1rem;
+}
+.tabs { display: flex; gap: .4rem; margin-bottom: 1rem; }
+.tab {
+  flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted);
+  padding: .5rem; border-radius: 9px; cursor: pointer;
+}
+.tab.active { color: var(--text); border-color: var(--accent); background: var(--bg-2); }
+label { display: block; margin: .7rem 0; font-size: .85rem; color: var(--muted); }
+input, select, textarea {
+  width: 100%; margin-top: .3rem; background: var(--card); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 9px; padding: .55rem .7rem; font: inherit;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+button {
+  font: inherit; border-radius: 9px; border: 1px solid var(--line); cursor: pointer;
+  background: var(--card); color: var(--text); padding: .5rem .9rem;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent-fill); color: var(--accent-ink); font-weight: 600; border-color: var(--accent-fill); }
+button.primary:hover { border-color: var(--accent); }
+button.ghost { background: transparent; }
+button[disabled] { opacity: .45; cursor: not-allowed; }
+.gate-card button.primary { width: 100%; margin-top: .6rem; }
+.error { color: var(--bad); font-size: .85rem; }
+
+/* -------------------------------------------------------------------- app */
+.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.sidebar {
+  border-right: 1px solid var(--line); background: var(--bg-2); padding: 1rem;
+  display: flex; flex-direction: column; gap: 1rem; position: sticky; top: 0; height: 100vh;
+}
+.brand.small h1, .brand.small strong { font-size: 1.05rem; }
+nav { display: flex; flex-direction: column; gap: .25rem; }
+nav button { text-align: left; background: transparent; border-color: transparent; color: var(--muted); }
+nav button.active { color: var(--text); background: var(--card); border-color: var(--accent); }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: .5rem; }
+.main { padding: 1.4rem 1.8rem 3rem; max-width: 1400px; }
+.view-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.row-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.grid { display: grid; gap: 1rem; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+.stats { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1rem; }
+.stat .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+.stat strong { display: block; font-size: 1.7rem; margin: .2rem 0; }
+.meter { height: 6px; background: var(--bg-2); border-radius: 4px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0; transition: width .4s; }
+.badge {
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: .2rem .7rem; font-size: .8rem; color: var(--muted);
+}
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.bad { color: var(--bad); border-color: var(--bad); }
+.warn { color: var(--warn); }
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }
+.table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.table td, .table th { padding: .4rem .5rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table th { color: var(--muted); font-weight: 500; }
+.table td.num, .table th.num { text-align: right; }
+.inline-form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: .8rem; }
+.inline-form input { flex: 1 1 160px; margin-top: 0; }
+.inline-form select { width: auto; flex: 0 0 auto; margin-top: 0; }
+.inline-form button { margin-top: 0; }
+.inline-check { display: flex; align-items: center; gap: .35rem; margin: 0; }
+.inline-check input { width: auto; margin: 0; }
+.pre {
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: .7rem;
+  overflow: auto; max-height: 320px; font-family: ui-monospace, Consolas, monospace; font-size: .78rem;
+  white-space: pre-wrap; word-break: break-word;
+}
+.tool-card .tool-form { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .6rem; }
+.toast {
+  position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 40; max-width: 380px;
+  background: var(--card); border: 1px solid var(--accent); color: var(--text);
+  padding: .7rem 1rem; border-radius: 10px; box-shadow: 0 12px 30px var(--shadow); font-size: .85rem;
+}
+.toast.bad { border-color: var(--bad); }
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  nav { flex-direction: row; flex-wrap: wrap; }
+  .main { padding: 1rem; }
+}

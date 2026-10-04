@@ -1,0 +1,41 @@
+# Python (netops, proxy-rotator)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Live runtime state. netops/data/netops.db holds users, password hashes,
+# session fingerprints and the audit log; the -wal/-shm siblings go with it.
+netops/data/
+data/
+
+# Regenerated from provider APIs and allowed to contain user:pass@ endpoints.
+proxy-rotator/pools/
+*.jsonl
+
+# Node (netops-desktop)
+node_modules/
+build/
+dist/
+native/build/
+native/target/
+*.node
+
+# Local configuration and secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+id_rsa*
+
+# Logs and editor noise
+*.log
+.vscode/
+.idea/
+*.swp
+.DS_Store
