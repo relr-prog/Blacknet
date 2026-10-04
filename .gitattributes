@@ -1,0 +1,33 @@
+# BlackNet is developed in WSL but opened from Windows too, so line endings are
+# pinned in the repository rather than left to core.autocrlf. Without this,
+# Windows git rewrites LF to CRLF in the working tree and
+# deploy/install-desktop-entry.sh stops running: a CRLF shebang is not a
+# shebang to /bin/sh.
+
+* text=auto eol=lf
+
+# Scripts and sources that must stay byte-identical to what runs on Linux.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.js    text eol=lf
+*.cpp   text eol=lf
+*.h     text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.toml  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.service text eol=lf
+*.desktop text eol=lf
+
+# Never touched.
+*.png   binary
+*.ico   binary
+*.jpg   binary
+*.db    binary
+*.node  binary
+*.so    binary
+*.woff  binary
+*.woff2 binary

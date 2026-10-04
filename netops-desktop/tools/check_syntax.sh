@@ -20,3 +20,13 @@ fi
 echo "--- syntax ok ---"
 
 node --test test/ 2>&1 | tail -9
+
+# Repository hygiene: portable filenames, LF endings, index agrees with
+# .gitignore. Included here so it runs with everything else rather than as a
+# separate thing someone has to remember.
+if [ -x tools/check_repo.sh ]; then
+  echo
+  bash tools/check_repo.sh || status=1
+fi
+
+exit "$status"
