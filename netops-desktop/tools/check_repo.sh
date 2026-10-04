@@ -51,12 +51,14 @@ echo "[check_repo] ${#tracked[@]} tracked file(s)"
 bad=0
 for f in "${tracked[@]}"; do
   why=""
-  case "$f" in
-    " "*|*" ")  why="leading/trailing space" ;;
-  esac
-  case "$f" in
-    *"$(printf '\t')"*) why="${why:+$why; }tab" ;;
-  esac
+  # Any whitespace at all, not just leading or trailing. The original incident
+  # produced three names and only the trailing-space one is unrepresentable on
+  # Windows; the other two ("password +" and "if password is not None else")
+  # are representable but still shell hazards that nobody would type on
+  # purpose. No legitimate file in this repository contains a space.
+  if [[ "$f" =~ [[:space:]] ]]; then
+    why="contains whitespace"
+  fi
   case "$f" in
     *['"'*]*)   why="${why:+$why; }double quote" ;;
     *"'"*)      why="${why:+$why; }single quote" ;;
