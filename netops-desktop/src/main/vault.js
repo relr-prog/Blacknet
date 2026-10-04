@@ -12,8 +12,9 @@
 //    step-up authentication unlocks: on Linux it lives in a root-only file that
 //    sudo reads, on Windows it is wrapped by DPAPI under the user account. So the
 //    vault is useless to anyone who has only the vault file.
-//  * AAD binds each record to its id, origin and account. Moving a sealed record
-//    to another slot, or replaying another account's entry, fails to decrypt.
+//  * AAD binds each record to its id, origin and username. Moving a sealed record
+//    to another slot, or replaying a record under a different site or username,
+//    fails to decrypt.
 //  * Records are stored one JSON file per entry, so a single corrupt file costs
 //    one credential instead of the whole vault.
 //
@@ -242,9 +243,15 @@ class Vault {
 }
 
 // Deterministic ids so re-saving the same site updates one entry instead of
-// piling up duplicates. Scoped by account so two users of the same browser do
-// not share a slot.
-function credentialId({ origin, username, account = "" }) {
+// piling up duplicates. The id is derived from the site and the username only.
+//
+// It used to include the signed-in account, which mattered when several people
+// shared one machine and one vault. There is now exactly one identity per
+// installation, so that component would only mean one thing: renaming the profile
+// would change every id and orphan every password already stored. Two ids that
+// differ for no reason the operator can see is worse than the ambiguity it was
+// meant to remove.
+function credentialId({ origin, username }) {
   let host = String(origin || "");
   try {
     host = new URL(host).hostname || host;
@@ -253,7 +260,7 @@ function credentialId({ origin, username, account = "" }) {
   }
   const digest = crypto
     .createHash("sha256")
-    .update(`${account}\u0000${host.toLowerCase()}\u0000${String(username || "")}`)
+    .update(`${host.toLowerCase()}\u0000${String(username || "")}`)
     .digest("hex");
   return digest.slice(0, 32);
 }

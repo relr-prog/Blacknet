@@ -44,17 +44,16 @@ async function run(action, { silent = false } = {}) {
 }
 
 async function refreshSession(force = false) {
+  // There is no session to refresh any more: this is a local read, so both
+  // branches collapse into the same call and `force` only exists to keep the
+  // call sites readable.
   try {
     const value = unwrap(await window.netops.account.available());
-    if (force) {
-      session.state = unwrap(await window.netops.account.state(true));
-    } else {
-      session.state = value;
-    }
-    session.gate = value.gate;
+    session.state = value;
+    session.gate = value.gate || { unlocked: true, locked: false, reason: "", message: "" };
   } catch (error) {
-    session.state = { authenticated: false, guest: false, isAdmin: false };
-    session.gate = { unlocked: false, message: error.message };
+    session.state = { available: false, name: "", local: true };
+    session.gate = { unlocked: true, locked: false, reason: "", message: error.message };
   }
   return session.state;
 }
@@ -201,20 +200,11 @@ async function renderNetwork() {
   toggleLabel.className = "field";
   toggleLabel.append(toggle, document.createTextNode("Use the proxy rotator"));
 
-  const mayChange =
-    session.state && session.state.authenticated === true && session.state.isAdmin === true;
-
   toggle.addEventListener("change", async () => {
-    if (!mayChange) {
-      toggle.checked = !toggle.checked;
-      setStatus(
-        session.state && session.state.guest
-          ? "Please log in to unlock this feature"
-          : "An administrator account is required to change the rotator",
-        true,
-      );
-      return;
-    }
+    // No administrator role is involved any more. The gateway is a child process
+    // this browser started, and the switch is a local preference: the operator
+    // already owns the machine, so the extra gate was the dashboard's rule leaking
+    // into a desktop control it has nothing to do with.
     await run(async () => {
       const updated = unwrap(await window.netops.rotator.set(toggle.checked));
       toggle.checked = Boolean(updated.rotatorEnabled);
@@ -242,37 +232,57 @@ async function renderAccount() {
   settingsBody.replaceChildren();
   await refreshSession(true);
 
-  const gate = session.gate || { unlocked: false };
-  if (!gate.unlocked) {
-    const notice = document.createElement("p");
-    notice.className = "locked";
-    notice.textContent = "Please log in to unlock this feature.";
-    settingsBody.append(notice);
-
-    const open = document.createElement("button");
-    open.type = "button";
-    open.textContent = "Open the dashboard";
-    open.addEventListener("click", () => run(() => window.netops.account.openDashboard()));
-    settingsBody.append(open);
-    return;
-  }
-
   const state = session.state || {};
-  // Built with textContent, not innerHTML: a username is data, and pasting one
-  // into markup would be the wrong place to trust it.
+  const status = unwrap(await window.netops.account.status());
+
+  // There is no sign-in step here and nothing to sign in to. This section names
+  // the local profile and offers the step-up, because the step-up is the thing
+  // that actually opens the vault.
   const who = document.createElement("p");
   const name = document.createElement("span");
   name.className = "pill ok";
-  name.textContent = String(state.username || "");
-  const role = document.createElement("span");
-  role.className = "pill";
-  role.textContent = String(state.role || "");
-  who.append(name, document.createTextNode(" "), role);
+  // Built with textContent, not innerHTML: a profile name is data, and pasting
+  // one into markup would be the wrong place to trust it.
+  name.textContent = String(state.name || "Local");
+  const kind = document.createElement("span");
+  kind.className = "pill";
+  kind.textContent = "local profile";
+  who.append(name, document.createTextNode(" "), kind);
   settingsBody.append(who);
 
+  const rename = document.createElement("div");
+  rename.className = "row";
+  const label = document.createElement("label");
+  label.textContent = "Profile name";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 60;
+  input.value = String(state.name || "");
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = "Rename";
+  save.addEventListener("click", () => run(async () => {
+    await window.netops.account.rename(input.value);
+    await refreshSession(true);
+    return renderAccount();
+  }));
+  rename.append(label, input, save);
+  settingsBody.append(rename);
+
+  const unlock = document.createElement("button");
+  unlock.type = "button";
+  unlock.textContent = status.verified ? "Unlock the vault" : "Unlock the vault now";
+  unlock.addEventListener("click", () => run(async () => {
+    await window.netops.account.unlock({});
+    await refreshSession(true);
+    return renderAccount();
+  }));
+  settingsBody.append(unlock);
+
   const notes = [
-    "Signed-in sessions can manage saved passwords.",
-    "Guest sessions stay read-only and never see the account or password tools.",
+    "This browser has one local profile and no password.",
+    "Saved passwords are unlocked with a system check (Windows Hello, Touch ID, or your sudo password), not by signing in.",
+    "The profile name is a label. It grants nothing and protects nothing.",
   ];
   const list = document.createElement("ul");
   for (const note of notes) {
@@ -281,12 +291,6 @@ async function renderAccount() {
     list.append(item);
   }
   settingsBody.append(list);
-
-  const open = document.createElement("button");
-  open.type = "button";
-  open.textContent = "Open the dashboard";
-  open.addEventListener("click", () => run(() => window.netops.account.openDashboard()));
-  settingsBody.append(open);
 }
 
 async function renderPasswords() {
@@ -297,7 +301,7 @@ async function renderPasswords() {
   if (!status.available) {
     const notice = document.createElement("p");
     notice.className = "locked";
-    notice.textContent = "Please log in to unlock this feature.";
+    notice.textContent = "No local profile owns this vault yet.";
     settingsBody.append(notice);
     return;
   }
@@ -573,21 +577,30 @@ async function renderPool() {
   );
 }
 
+// The proxy gateway. It used to be called "Service" and showed the Python control
+// plane, which no longer exists - this panel now reports the one child process
+// the shell actually supervises.
 async function renderService() {
-  const status = unwrap(await window.netops.service());
+  const status = unwrap(await window.netops.rotator.status());
   panelBody.replaceChildren();
-  const pill = status.state === "running" ? "ok" : "bad";
+
+  const pill = status.rotatorState === "running" ? "ok" : "bad";
   const headline = document.createElement("p");
   const statePill = document.createElement("span");
   statePill.className = `pill ${pill}`;
-  statePill.textContent = String(status.state || "");
-  headline.append(statePill, document.createTextNode(` ${status.detail || ""}`));
+  statePill.textContent = String(status.rotatorState || "stopped");
+  headline.append(statePill, document.createTextNode(` ${status.rotatorDetail || ""}`));
   panelBody.append(headline);
-  if (status.endpoint) {
-    const endpoint = document.createElement("p");
-    endpoint.className = "mono";
-    endpoint.textContent = String(status.endpoint);
-    panelBody.append(endpoint);
+
+  if (status.pool && status.pool.healthy) {
+    const detail = document.createElement("p");
+    detail.textContent =
+      `${status.pool.healthy} healthy of ${status.pool.upstreams} upstreams` +
+      (status.pool.strategy ? `, rotating by ${status.pool.strategy}` : "") +
+      (status.pool.countries && status.pool.countries.length
+        ? `, exits in ${status.pool.countries.join(", ")}`
+        : "");
+    panelBody.append(detail);
   }
 
   const logs = unwrap(await window.netops.logs());

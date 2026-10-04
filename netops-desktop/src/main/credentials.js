@@ -2,11 +2,19 @@
 
 // The password manager: the layer the settings UI actually talks to.
 //
-// It composes the three pieces and enforces the order they have to be used in:
+// It composes the two pieces that still exist and enforces the order they have to
+// be used in:
 //
-//   1. the account must be signed in (guest sessions are refused outright),
-//   2. every secret-bearing action needs a fresh step-up check,
-//   3. only then is the vault unlocked and the secret returned.
+//   1. a local identity must be present, so the vault belongs to somebody,
+//   2. every secret-bearing action needs a fresh step-up check, and only then is
+//      the vault unlocked and the secret returned.
+//
+// The signed-in session that used to be the first check is gone. It existed to
+// keep a browser on the same machine out of a localhost API; there is no API any
+// more, and the step-up key is the factor that actually matters - on Linux it
+// only exists while a real sudo proof is fresh, on Windows the key stays wrapped
+// by DPAPI. Removing the session therefore does not weaken the vault, it removes
+// a check that was guarding a door that no longer exists.
 //
 // Saving is deliberately *not* gated behind step-up: storing a password should
 // not demand the sudo password, and refusing to save would push people to write
@@ -39,14 +47,14 @@ function toVault(vault) {
 
 class PasswordManager {
   #vault;
-  #account;
+  #identity;
   #reauth;
   #keyProvider;
   #offers = new Map();
 
-  constructor({ vault, account, reauth, keyProvider = null }) {
+  constructor({ vault, identity, reauth, keyProvider = null }) {
     this.#vault = toVault(vault);
-    this.#account = account;
+    this.#identity = identity;
     this.#reauth = reauth;
     this.#keyProvider = keyProvider;
   }
@@ -60,15 +68,19 @@ class PasswordManager {
   }
 
   // --- gating --------------------------------------------------------------
-  // Refuses guests and signed-out sessions. Throws, because every caller here is
-  // a privileged IPC action and the UI renders the message.
-  #requireAccount(feature) {
-    const state = this.#account.current;
-    if (!state || state.authenticated !== true || state.guest === true) {
-      const reason = state && state.guest ? "guest" : "signed out";
-      throw new Error(`Please log in to unlock this feature (${feature}, ${reason})`);
+  // The vault has to belong to somebody. This is a presence check, not a
+  // credential: the identity carries no secret and proves nothing. Throws because
+  // every caller here is a privileged IPC action and the UI renders the message.
+  //
+  // It is not the thing protecting the secrets - #unlock() and the step-up key
+  // are. This only refuses to operate at all when the profile has no owner, which
+  // is a corrupt or half-removed userData rather than a normal state.
+  #requireIdentity(feature) {
+    const identity = this.#identity && this.#identity.current();
+    if (!identity) {
+      throw new Error(`no local profile owns the ${feature}`);
     }
-    return state;
+    return identity;
   }
 
   // Resolves the data key, or null when none is available yet.
@@ -200,7 +212,7 @@ class PasswordManager {
   // password into the app instead of a terminal. It is passed straight to sudo
   // and never stored, logged, or put in the vault.
   async save({ origin, username, password, sudoPassword, method }) {
-    const state = this.#requireAccount("password manager");
+    this.#requireIdentity("password manager");
     const site = this.#limit(origin, MAX_ORIGIN);
     const user = this.#limit(username, MAX_USERNAME);
     const secret = this.#limit(password, MAX_PASSWORD);
@@ -209,7 +221,7 @@ class PasswordManager {
     // First save creates the key file as a side effect of the step-up, so this
     // is one prompt rather than "authenticate, then save, then it still fails".
     await this.#unlock({ create: true, method, password: sudoPassword });
-    const id = credentialId({ origin: site, username: user, account: state.username || "" });
+    const id = credentialId({ origin: site, username: user });
     // Keep the AAD's username in step with the id's input, otherwise reveal()
     // would fail to authenticate the record we just wrote.
     const record = this.#vault.seal({ id, origin: site, username: user, password: secret });
@@ -218,7 +230,7 @@ class PasswordManager {
 
   // Metadata only: safe to render without a step-up, and it cannot leak.
   list() {
-    this.#requireAccount("password manager");
+    this.#requireIdentity("password manager");
     return this.#vault.list();
   }
 
@@ -231,7 +243,7 @@ class PasswordManager {
   // `password` is only for the no-terminal fallback, where the sudo password is
   // typed into the app. It goes straight to sudo and is never retained.
   async reveal(id, { method, password } = {}) {
-    this.#requireAccount("password manager");
+    this.#requireIdentity("password manager");
     // Ask again whenever the last verification has gone stale, but do not nag
     // for every keystroke of a still-valid unlock.
     if (!this.#verificationFresh()) {
@@ -256,13 +268,13 @@ class PasswordManager {
   }
 
   async remove(id) {
-    this.#requireAccount("password manager");
+    this.#requireIdentity("password manager");
     const removed = this.#vault.remove(id);
     return { removed };
   }
 
   async verifyAll() {
-    this.#requireAccount("password manager");
+    this.#requireIdentity("password manager");
     await this.#unlock();
     return this.#vault.verify();
   }
@@ -281,13 +293,12 @@ class PasswordManager {
   // explain why the reveal buttons are disabled.
   status() {
     try {
-      const state = this.#account.current;
+      const identity = this.#identity && this.#identity.current();
       return {
-        available: Boolean(state && state.authenticated === true && state.guest !== true),
-        guest: Boolean(state && state.guest),
+        available: Boolean(identity),
         method: this.#reauth.method(),
         locked: this.#vault.locked,
-        verified: Boolean(this.#reauth.verified),
+        verified: this.#verificationFresh(),
         count: this.#vault.count(),
         pending: this.#offers.size,
         action: COPY_ACTION,
@@ -295,7 +306,6 @@ class PasswordManager {
     } catch {
       return {
         available: false,
-        guest: false,
         method: this.#reauth.method(),
         locked: true,
         verified: false,
@@ -318,10 +328,7 @@ class PasswordManager {
   // A deliberate unlock from the settings panel ("Unlock now"), separate from a
   // reveal. The result never contains key material.
   async reauth({ method, password } = {}) {
-    const state = this.#account.current;
-    if (!state || state.authenticated !== true || state.guest === true) {
-      throw new Error("Please log in to unlock this feature");
-    }
+    this.#requireIdentity("password manager");
     // An unlock is allowed to bootstrap a missing key file, the same as the
     // first save; if one already exists the check returns that one untouched.
     const result = await this.#unlock({ create: true, method, password });

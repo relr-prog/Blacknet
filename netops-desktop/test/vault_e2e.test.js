@@ -80,7 +80,7 @@ function harness({ password = null } = {}) {
 
   const manager = new PasswordManager({
     vault: { dir: path.join(root, "vault") },
-    account: { current: { authenticated: true, guest: false, isAdmin: true, username: "rel4ever" } },
+    identity: { current: () => ({ id: "abc", name: "Local", createdAt: 1 }) },
     reauth,
     keyProvider: null,
   });
@@ -192,7 +192,7 @@ test("the whole thing survives a simulated restart: same key, same records", asy
   const { run } = sudoEmulator({ keyPath });
   const restarted = new PasswordManager({
     vault: { dir: path.join(root, "vault") },
-    account: { current: { authenticated: true, guest: false, isAdmin: true, username: "rel4ever" } },
+    identity: { current: () => ({ id: "abc", name: "Local", createdAt: 1 }) },
     reauth: new Reauth({ platform: "linux", run, which: async () => null }),
     keyProvider: null,
   });
@@ -205,27 +205,29 @@ test("the whole thing survives a simulated restart: same key, same records", asy
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test("a guest still cannot touch the vault even with a working key path", async () => {
+test("a vault with no owning profile is refused even with a working key path", async () => {
   const { manager, root } = harness();
   await manager.save({ ...ENTRY, sudoPassword: "secret-sudo" });
   const listed = manager.list();
   assert.equal(listed.length, 1);
 
-  // Same vault, but the session has become a guest. The records are still on disk
-  // and the key is still readable by this user - only the session changed.
+  // Same vault, same readable key file - only the profile is gone. This used to be
+  // the guest case, where a session downgrade could not reach the records. There
+  // is no session left to downgrade, so the profile check is what stands between
+  // an unowned vault and whoever opened this process.
   const { run } = sudoEmulator({ keyPath: path.join(root, "vault.key") });
-  const asGuest = new PasswordManager({
+  const ownerless = new PasswordManager({
     vault: { dir: path.join(root, "vault") },
-    account: { current: { authenticated: true, guest: true, isAdmin: false } },
+    identity: { current: () => null },
     reauth: new Reauth({ platform: "linux", run, which: async () => null }),
     keyProvider: null,
   });
 
-  assert.throws(() => asGuest.list(), /Please log in to unlock this feature.*guest/);
-  await assert.rejects(() => asGuest.reveal(listed[0].id), /Please log in to unlock this feature.*guest/);
+  assert.throws(() => ownerless.list(), /no local profile owns the password manager/);
+  await assert.rejects(() => ownerless.reveal(listed[0].id), /no local profile owns the password manager/);
   await assert.rejects(
-    () => asGuest.save({ ...ENTRY, sudoPassword: "secret-sudo" }),
-    /Please log in to unlock this feature.*guest/,
+    () => ownerless.save({ ...ENTRY, sudoPassword: "secret-sudo" }),
+    /no local profile owns the password manager/,
   );
 
   fs.rmSync(root, { recursive: true, force: true });

@@ -12,74 +12,49 @@
 // this file is trusted to enforce access control.
 
 const { detectAudio } = require("./audio");
-const { Account } = require("./account");
 
 // The rotator is admin-only in the control plane. This mirrors that rule in the
 // shell so a guest switch is refused before a request is made, and the UI can
 // explain why without a round trip.
 //
-// The session cookie has to travel with the request. Without it the control
-// plane sees an anonymous caller and answers 401/403 no matter who is signed in,
-// which is why the switch looked broken while the local gate happily passed.
-function rotatorAction(settings, account, endpoint, cookies) {
+// The rotator is a child process now, not a server route, so there is no session
+// cookie and no HTTP round trip. The gateway itself is the source of truth for
+// whether it is running; the stored preference only mirrors it for the next
+// paint. Flipping the proxy is a local desktop action, so it is no longer gated
+// on a dashboard administrator session - the operator already owns the machine.
+function rotatorAction(settings, rotator, tabs) {
   return async function (enabled) {
+    if (!rotator) throw new Error("the rotator is not available");
     const want = Boolean(enabled);
-    const state = account ? account.current : null;
-    if (!state || state.authenticated !== true || state.guest === true) {
-      const reason = state && state.guest ? "guest" : "signed out";
-      throw new Error(`log in as an administrator to change the rotator (${reason})`);
-    }
-    if (!state.isAdmin) throw new Error("administrator role required to change the rotator");
-
-    const header = typeof cookies === "function" ? await cookies() : cookies;
-    const response = await fetch(`${endpoint}/api/rotator/${want ? "start" : "stop"}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(header ? { cookie: header } : {}),
-      },
-      body: JSON.stringify({}),
+    const state = want ? await rotator.start() : await rotator.stop();
+    const live = await rotator.snapshot();
+    const status = rotator.status();
+    settings.setRotatorState({
+      enabled: state === "running",
+      state,
+      detail: live ? live.detail : status.detail,
+      adminOnly: false,
     });
-    if (!response.ok) {
-      throw new Error(`the rotator service refused the change (http ${response.status})`);
-    }
-    const body = await response.json().catch(() => ({}));
-    // The service is the source of truth for whether it is running; the stored
-    // preference only mirrors it for the next paint.
-    return settings.setRotatorState({
-      enabled: want,
-      state: body.state || (want ? "running" : "stopped"),
-      detail: body.detail || "",
-      adminOnly: true,
-    });
+    if (tabs && typeof tabs.refreshProxy === "function") tabs.refreshProxy();
+    return settings.all();
   };
 }
 
-async function rotatorStatus(settings, endpoint, cookies) {
+async function rotatorStatus(settings, rotator) {
   const stored = settings.all();
-  try {
-    const header = typeof cookies === "function" ? await cookies() : cookies;
-    const response = await fetch(`${endpoint}/api/rotator/status`, {
-      headers: header ? { cookie: header } : {},
-    });
-    if (!response.ok) throw new Error(`http ${response.status}`);
-    const body = await response.json();
-    const enabled = Boolean(body.enabled ?? body.running);
-    settings.setRotatorState({
-      enabled,
-      state: body.state || (enabled ? "running" : "stopped"),
-      detail: body.detail || body.upstreams || "",
-      adminOnly: true,
-    });
-    return { ...settings.all(), live: true };
-  } catch {
-    // The control plane may be down; show the last known state rather than an
-    // error, because the switch is a preference display.
-    return { ...stored, live: false };
-  }
+  if (!rotator) return { ...stored, live: false };
+  const live = await rotator.snapshot();
+  const status = rotator.status();
+  settings.setRotatorState({
+    enabled: status.state === "running",
+    state: status.state,
+    detail: live ? live.detail : status.detail,
+    adminOnly: false,
+  });
+  return { ...settings.all(), live: Boolean(live), pool: live };
 }
 
-function createActions({ core, tabs, service, settings, account, passwords, rotatorEndpoint }) {
+function createActions({ core, tabs, clipboard, settings, identity, passwords, rotator }) {
   const actions = {
     // --- tabs -------------------------------------------------------------
     "netops:tabs:list": () => tabs.list(),
@@ -109,7 +84,6 @@ function createActions({ core, tabs, service, settings, account, passwords, rota
     "netops:pool:pick": (profile) => core.pickUpstream(profile),
 
     // --- shell ------------------------------------------------------------
-    "netops:service:status": () => service.status(),
     "netops:audio:status": () => detectAudio(),
     "netops:logs": () => (global.__netopsLogs ? global.__netopsLogs.slice(-120) : []),
   };
@@ -123,31 +97,47 @@ function createActions({ core, tabs, service, settings, account, passwords, rota
     actions["netops:settings:css-variables"] = () => settings.cssVariables();
   }
 
-  if (account) {
-    actions["netops:account:state"] = async (force) => {
-      // Cookies live in the active tab's session partition; read them from there
-      // so the shell sees the same identity the dashboard does.
-      const cookies = await tabs.sessionCookies();
-      return account.state(cookies, { force: Boolean(force) });
-    };
-    actions["netops:account:available"] = async () => {
-      const cookies = await tabs.sessionCookies();
-      const state = await account.state(cookies);
-      return { ...state, gate: Account.gate(state, "account") };
-    };
-    actions["netops:account:open-dashboard"] = () => tabs.openDashboard();
+  // One local identity, created on first run, with no password behind it. There is
+// nothing to log in to and no dashboard to send anyone to, so this answers
+// synchronously and never touches the network or the cookie jar.
+function identityAction(settings, identity, passwords) {
+  const state = () => ({
+    ...(identity ? identity.describe() : { available: false, name: "", createdAt: 0 }),
+    local: true,
+    gate: { unlocked: true, locked: false, reason: "", message: "" },
+  });
+  return {
+    state: async () => state(),
+    available: async () => state(),
+    rename: async (name) => {
+      if (!identity) throw new Error("no local profile");
+      const next = identity.rename(name);
+      log(`[identity] renamed to ${next.name}`);
+      return state();
+    },
+    // The step-up is what actually unlocks the vault, so the panel asks the
+    // password manager directly rather than asking a session to vouch for it.
+    unlock: async (options) => {
+      if (!passwords) throw new Error("the password manager is not available");
+      const result = await passwords.reauth(options || {});
+      return { ...state(), unlock: result };
+    },
+    status: async () => (passwords ? passwords.status() : { available: false, locked: true }),
+  };
+}
+
+  if (identity) {
+    const profile = identityAction(settings, identity, passwords);
+    actions["netops:account:state"] = profile.state;
+    actions["netops:account:available"] = profile.available;
+    actions["netops:account:rename"] = profile.rename;
+    actions["netops:account:unlock"] = profile.unlock;
+    actions["netops:account:status"] = profile.status;
   }
 
-  if (rotatorEndpoint) {
-    // Read the cookie header at call time, not at wiring time: the session
-    // cookie is issued by the dashboard tab, which may not have loaded yet.
-    const sessionCookie = async () => {
-      if (!tabs || !account) return "";
-      const jar = await tabs.sessionCookies();
-      return Account.cookieHeader(jar, rotatorEndpoint);
-    };
-    actions["netops:rotator:status"] = () => rotatorStatus(settings, rotatorEndpoint, sessionCookie);
-    actions["netops:rotator:set"] = rotatorAction(settings, account, rotatorEndpoint, sessionCookie);
+  if (rotator) {
+    actions["netops:rotator:status"] = () => rotatorStatus(settings, rotator);
+    actions["netops:rotator:set"] = rotatorAction(settings, rotator, tabs);
   }
 
   if (passwords) {
@@ -155,7 +145,7 @@ function createActions({ core, tabs, service, settings, account, passwords, rota
     actions["netops:passwords:list"] = () => passwords.list();
     actions["netops:passwords:reveal"] = (id, options) => passwords.reveal(id, options);
     actions["netops:passwords:copy"] = (id, options) =>
-      passwords.copy(id, { ...options, clipboard: service.clipboard() });
+      passwords.copy(id, { ...options, clipboard });
     actions["netops:passwords:remove"] = (id) => passwords.remove(id);
     actions["netops:passwords:save"] = (entry) => passwords.save(entry || {});
     actions["netops:passwords:verify"] = () => passwords.verifyAll();

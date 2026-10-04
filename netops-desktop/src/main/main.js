@@ -7,26 +7,25 @@
 // The chrome talks to the main process only through the preload bridge, so a
 // page can never reach the native addon, the filesystem or the control plane.
 
-const { app, BrowserWindow, WebContentsView, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, WebContentsView, clipboard, ipcMain, Menu, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
 const config = require("./config");
 const { createActions } = require("./actions");
-const { PythonService } = require("./service");
 const { Native, native: addon } = require("./native");
 const { TabManager, CHROME_HEIGHT } = require("./tabs");
 const { Settings } = require("./settings");
-const { Account } = require("./account");
+const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
 const { PasswordManager } = require("./credentials");
 const { PasswordWatcher } = require("./passwordWatcher");
+const { RotatorService } = require("./rotator");
 
 const logLines = [];
 // How often the shell re-checks the session cookie. The dashboard can change the
 // session in another tab, and a stale "guest" state would wrongly hide features
 // the user just unlocked (or show ones they lost).
-const ACCOUNT_POLL_MS = 20000;
 function log(message) {
   const line = `${new Date().toISOString()} ${message}`;
   logLines.push(line);
@@ -41,14 +40,21 @@ const ipcHandlers = new Map();
 let win = null;
 let chromeView = null;
 let tabs = null;
-let service = null;
 let core = null;
 let settings = null;
-let account = null;
+let identity = null;
 let reauth = null;
 let passwords = null;
 let watcher = null;
-let rotatorEndpoint = null;
+let rotator = null;
+
+// The shape the password manager expects for copying. It used to hang off the
+// Python service, which meant a clipboard write - the one thing a user absolutely
+// must be able to do - was unavailable whenever that service was down.
+const clipboardBridge = {
+  writeText: (text) => clipboard.writeText(String(text)),
+  readText: () => clipboard.readText(),
+};
 
 function readOverrides(userDataPath) {
   const overridePath = path.join(userDataPath, "browser.json");
@@ -60,30 +66,42 @@ function readOverrides(userDataPath) {
 }
 
 function sendToChrome(channel, payload) {
-  if (chromeView && !chromeView.webContents.isDestroyed()) {
+  if (!chromeView || chromeView.webContents.isDestroyed()) return;
+  try {
     chromeView.webContents.send(channel, payload);
+  } catch {
+    // isDestroyed() is false while the renderer is gone but the view object is
+    // still around, and send() throws then. That happens exactly when the shell
+    // is recovering from a crash, and a broadcast that throws inside an event
+    // handler turns one dead tab into a loop.
   }
 }
 
 // The password hook is only worth loading in a tab when the manager is usable, so
-// capture stays a live check rather than a value baked in at startup: the user
-// may log in or switch the feature off without restarting the browser.
+// capture stays a live check rather than a value baked in at startup: the vault
+// can be locked at any moment without restarting the browser.
 function captureEnabled() {
-  if (!passwords || !settings || !account) return false;
+  if (!passwords || !settings) return false;
   if (settings.get("offerToSavePasswords") === false) return false;
-  const state = account.current;
-  return Boolean(state && state.authenticated === true && state.guest !== true);
+  if (!identity || !identity.current()) return false;
+  // Nothing can be stored until the vault can be opened, and opening it needs a
+  // step-up. Capturing anyway would queue offers that cannot be saved.
+  return passwords.status().verified;
 }
 
 function buildFeatureModules(userData, browserConfig, port) {
   settings = new Settings({ userDataPath: userData, core });
-  rotatorEndpoint = `http://127.0.0.1:${port}`;
+  // The gateway is its own process now, supervised directly by the shell. It is
+  // deliberately not routed through the control plane: a browser should not need
+  // a second language runtime and a localhost web server to switch a proxy on.
+  rotator = new RotatorService({ log });
 
-  account = new Account({ endpoint: rotatorEndpoint });
+  identity = new Identity({ userDataPath: userData, log });
+  const profile = identity.ensure();
   reauth = new Reauth();
   passwords = new PasswordManager({
     vault: { dir: path.join(userData, "vault") },
-    account,
+    identity,
     reauth,
 // On Linux the key is only reachable through sudo, so it arrives from the step-up
   // helper and never rests anywhere between checks. Returning null rather than
@@ -98,7 +116,7 @@ function buildFeatureModules(userData, browserConfig, port) {
   watcher = new PasswordWatcher({
     manager: passwords,
     settings,
-    account,
+    identity,
     send: sendToChrome,
   });
   passwords.onOfferResolved(() => watcher.reset());
@@ -111,19 +129,10 @@ function buildFeatureModules(userData, browserConfig, port) {
     sendToChrome("netops:settings", values);
   });
 
-  // Keep the shell's idea of the session current without the UI having to poll:
-  // the dashboard can log in or out in another tab at any time.
-  setInterval(() => {
-    if (!tabs) return;
-    tabs
-      .sessionCookies()
-      .then((cookies) => account.state(cookies, { force: true }))
-      .then((state) => sendToChrome("netops:account", state))
-      .catch(() => {});
-  }, ACCOUNT_POLL_MS);
-
   log(`features: vault ${path.join(userData, "vault")}, re-auth ${reauth.method()}`);
+  log(`identity: ${profile.name}`);
   void browserConfig;
+  void port;
 }
 
 // A report from a tab's password hook. The payload is untrusted; watcher.handle
@@ -189,6 +198,7 @@ async function createWindow() {
     log,
     captureEnabled,
     send: sendToChrome,
+    rotator,
   });
   registerIpc();
   attachPasswordHook();
@@ -233,14 +243,10 @@ async function createWindow() {
   win.contentView.addChildView(chromeView);
   layoutChrome();
 
-  // Learn who is signed in *before* the first tab exists. captureEnabled() is read
-  // when a tab's preload is chosen, and an account that has not been fetched yet
-  // reads as signed out - which would leave the startup tab without the hook.
-  try {
-    account.state(await tabs.sessionCookies(), { force: true });
-  } catch (error) {
-    log(`account refresh before first tab failed: ${error.message}`);
-  }
+  // The vault decides whether the password hook is loaded, and captureEnabled()
+  // reads a fresh verification rather than a cached session, so there is nothing
+  // to prefetch here: the startup tab simply has no hook until the operator
+  // presents a step-up, which is the correct state for a locked vault.
 
   await tabs.create({ active: true });
 
@@ -302,11 +308,11 @@ function registerIpc() {
     ...createActions({
       core,
       tabs,
-      service,
+clipboard: clipboardBridge,
       settings,
-      account,
+      identity,
       passwords,
-      rotatorEndpoint,
+      rotator,
     }),
     "netops:open-external": async (url) => {
       // Only ever hand http(s) to the OS browser; never file: or a custom
@@ -388,11 +394,28 @@ if (!app.requestSingleInstanceLock()) {
       try { app.setAppUserModelId("com.blacknet.desktop"); } catch (e) {}
     }
     try { app.setName("BlackNet"); } catch (e) {}
-    service = new PythonService({ port: Number(process.env.NETOPS_PORT || 8787), log });
-    // Do not block the window on Python: the shell is usable without it.
-    service.start().catch((error) => log(`service: ${error.message}`));
+    // No Python, no control plane, no localhost server. The shell is the product:
+    // settings, the vault, the pool and the gateway are all native or child
+    // processes the browser supervises itself.
     await createWindow();
     buildMenu();
+
+    // Restore the rotator preference from the last run. The window is already
+    // usable by now, so a slow gateway start never delays first paint.
+    if (settings.get("rotatorEnabled")) {
+      rotator
+        .start()
+        .then((state) => {
+          settings.setRotatorState({
+            enabled: state === "running",
+            state,
+            detail: rotator.status().detail,
+            adminOnly: false,
+          });
+          tabs.refreshProxy();
+        })
+        .catch((error) => log(`rotator: ${error.message}`));
+    }
 
     if (process.argv.includes("--smoke")) {
       const { runSmoke } = require("./smoke");
@@ -413,10 +436,10 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== "darwin") app.quit();
   });
 
-  // Quitting must actually stop Python, and neither `before-quit` nor app.exit()
-// waits for an async handler - app.exit() skips before-quit entirely. So hold the
-// quit event, stop the service, then exit for real. Without this every run leaves
-// an orphaned uvicorn holding the port.
+// Quitting must actually stop the proxy gateway, and neither `before-quit` nor
+  // app.exit() waits for an async handler - app.exit() skips before-quit entirely.
+  // So hold the quit event, stop the child, then exit for real. Without this every
+  // run leaves a gateway still bound to 8888.
 let quitting = false;
 let exitCode = 0;
 
@@ -426,11 +449,11 @@ function quit(code = 0) {
 }
 
 app.on("before-quit", (event) => {
-  if (quitting || !service || !service.child) return;
+  if (quitting || !rotator || !rotator.child) return;
   event.preventDefault();
-  service
+  rotator
     .stop()
-    .catch((error) => log(`service: ${error.message}`))
+    .catch((error) => log(`rotator: ${error.message}`))
     .finally(() => {
       quitting = true;
       app.exit(exitCode);

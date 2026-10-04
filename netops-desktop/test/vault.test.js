@@ -202,14 +202,23 @@ test("a truncated ciphertext is rejected rather than returning junk", () => {
   assert.throws(() => vault.reveal("abc123"));
 });
 
-test("credentialId is stable, account-scoped and host-normalised", () => {
-  const a = credentialId({ origin: "https://Example.com/login", username: "rel", account: "one" });
-  const b = credentialId({ origin: "https://example.com/other/page", username: "rel", account: "one" });
+test("credentialId is stable, identity-independent and host-normalised", () => {
+  const a = credentialId({ origin: "https://Example.com/login", username: "rel" });
+  const b = credentialId({ origin: "https://example.com/other/page", username: "rel" });
   assert.equal(a, b, "same site and user is one entry");
 
-  assert.notEqual(a, credentialId({ origin: "https://example.com", username: "rel", account: "two" }));
-  assert.notEqual(a, credentialId({ origin: "https://example.com", username: "other", account: "one" }));
+  assert.notEqual(a, credentialId({ origin: "https://example.com", username: "other" }));
   assert.match(a, /^[0-9a-f]{32}$/);
+});
+
+test("renaming the profile cannot orphan a saved password", () => {
+  // The id used to include the signed-in account. With one identity per install
+  // that meant renaming the profile would change every id, and every stored
+  // password would become unreachable. The id must not depend on the name at all.
+  const before = credentialId({ origin: "https://example.com", username: "rel", account: "old-name" });
+  const after = credentialId({ origin: "https://example.com", username: "rel", account: "new-name" });
+  assert.equal(before, after, "the account/name argument no longer moves the id");
+  assert.equal(before, credentialId({ origin: "https://example.com", username: "rel" }));
 });
 
 test("credentialId copes with an origin that is not a URL", () => {

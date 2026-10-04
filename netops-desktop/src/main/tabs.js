@@ -44,13 +44,16 @@ function isRealConsoleFault(level, message) {
 }
 
 class TabManager {
-  constructor({ window: win, native, config, log, send, captureEnabled }) {
+  constructor({ window: win, native, config, log, send, captureEnabled, rotator }) {
     this.window = win;
     this.native = native;
     this.config = config;
     this.log = log || (() => {});
     // Injected so this class never has to know how the chrome view is built.
     this.send = send || null;
+    // Injected by main.js so TabManager does not need to know how the proxy
+    // gateway is supervised. Only proxy() is used.
+    this.rotator = rotator || null;
     // Injected by main.js so TabManager does not need to know about the password
   // manager. Returns false while the feature is unavailable (guest, signed out,
   // or switched off in settings).
@@ -380,22 +383,35 @@ class TabManager {
   }
 
   // The C++ pool picks the upstream for this profile; Chromium is told the
-  // resulting host:port and every tab in the profile shares it.
+  // resulting host:port and every tab in the profile shares it. When the rotating
+  // gateway is up it wins, because it is the thing that actually changes the exit
+  // IP per request rather than per profile.
   #applyProxy(tab) {
-    const upstream = this.native.pickUpstream(tab.profile);
-    if (!upstream) {
-      tab.proxy = null;
-      return;
+    const gateway = this.rotator ? this.rotator.proxy() : null;
+    let rules = gateway;
+    if (!rules) {
+      const upstream = this.native.pickUpstream(tab.profile);
+      if (!upstream) {
+        tab.proxy = null;
+        return;
+      }
+      const protocol = upstream.kind === "socks5" ? "socks5" : "http";
+      rules = `${protocol}://${upstream.host}:${upstream.port}`;
     }
     const tabSession = this.#partitionSession(tab.profile);
-    const protocol = upstream.kind === "socks5" ? "socks5" : "http";
     tabSession
-      .setProxy({ proxyRules: `${protocol}://${upstream.host}:${upstream.port}` })
+      .setProxy({ proxyRules: rules })
       .then(() => {
-        tab.proxy = `${protocol}://${upstream.host}:${upstream.port}`;
+        tab.proxy = rules;
         this.#broadcast();
       })
       .catch((error) => this.log(`proxy: ${error.message}`));
+  }
+
+  // Called when the rotator is switched on or off: every tab has to be told a
+  // new proxy, not just the ones created after the change.
+  refreshProxy() {
+    for (const tab of this.tabs.values()) this.#applyProxy(tab);
   }
 
   #applyTheme(tab) {
@@ -525,10 +541,12 @@ class TabManager {
   // --- privacy reporting --------------------------------------------------
   // The active tab's own cookies, as Chromium sees them.
   //
-  // The shell has no session of its own - it is a different process from the
-  // dashboard - so "who is logged in" can only be answered from the partition the
-  // page is actually using. Returning the raw jar is safe because this stays in
-  // the main process; only the derived account state crosses to the renderer.
+  // This used to answer "who is signed in" for the shell, which needed the
+  // partition the page was actually using because the shell had no session of its
+  // own. There is no session to answer for any more - the vault is unlocked by a
+  // step-up, not by a cookie - so it is now just the privacy report's input.
+  // Returning the raw jar is safe because this stays in the main process; only
+  // derived counts and domains cross to the renderer.
   async sessionCookies(profile) {
     const tab = this.tabs.get(this.activeId);
     const partition =
@@ -548,21 +566,6 @@ class TabManager {
       id: tab.id,
       url: tab.view && !tab.view.webContents.isDestroyed() ? tab.view.webContents.getURL() : "",
     }));
-  }
-
-  // Open (or focus) the control plane dashboard, which is where login, signup
-  // and guest live.
-  async openDashboard(url) {
-    const target = url || this.#dashboardUrl();
-    const tab = await this.create({ active: true });
-    await this.navigate(tab.id, target);
-    return tab;
-  }
-
-  // The control plane is local; its port comes from the service, not config.
-  #dashboardUrl() {
-    const port = Number(process.env.NETOPS_PORT || 8787);
-    return `http://127.0.0.1:${port}/`;
   }
 
   async cookieReport(profile) {

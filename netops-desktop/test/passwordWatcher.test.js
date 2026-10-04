@@ -4,7 +4,7 @@ const { test } = require("node:test");
 
 const { PasswordWatcher, validOrigin, isPrivateHost } = require("../src/main/passwordWatcher");
 
-function harness({ authenticated = true, guest = false, enabled = true } = {}) {
+function harness({ hasIdentity = true, enabled = true } = {}) {
   const offers = [];
   const sent = [];
   const manager = {
@@ -16,7 +16,7 @@ function harness({ authenticated = true, guest = false, enabled = true } = {}) {
   const watcher = new PasswordWatcher({
     manager,
     settings: { get: (key) => (key === "offerToSavePasswords" ? enabled : undefined) },
-    account: { current: { authenticated, guest } },
+    identity: { current: () => (hasIdentity ? { id: "abc", name: "Local", createdAt: 1 } : null) },
     send: (channel, payload) => sent.push({ channel, payload }),
   });
   const tabs = [{ id: 7, url: "https://example.com/login" }];
@@ -96,18 +96,25 @@ test("only http and https are considered", () => {
   assert.equal(validOrigin(""), false);
 });
 
-test("a guest session captures nothing", async () => {
-  const { watcher, offers } = harness({ guest: true });
+test("with no local profile nothing is captured", async () => {
+  // Guest and signed-out sessions used to be the two ways to be refused here.
+  // Neither exists any more, so the only refusal left is a missing profile - a
+  // vault with no owner, where an offer could never be saved.
+  const { watcher, offers } = harness({ hasIdentity: false });
   const result = await watcher.handle(report, [{ id: 7, url: "https://example.com/login" }]);
   assert.equal(result.accepted, false);
   assert.equal(result.reason, "disabled");
   assert.equal(offers.length, 0);
 });
 
-test("a signed-out session captures nothing", async () => {
-  const { watcher } = harness({ authenticated: false });
+test("a locked vault still captures: saving is allowed to prompt for a step-up", async () => {
+  // The step-up gates reading a secret, not storing one. Refusing to offer while
+  // locked would mean the operator has to unlock before they can ever save, and
+  // would push people back to writing passwords on paper.
+  const { watcher, offers } = harness();
   const result = await watcher.handle(report, [{ id: 7, url: "https://example.com/login" }]);
-  assert.equal(result.reason, "disabled");
+  assert.equal(result.accepted, true);
+  assert.equal(offers.length, 1);
 });
 
 test("turning the feature off in settings captures nothing", async () => {

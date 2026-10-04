@@ -73,23 +73,24 @@ function validOrigin(origin) {
 class PasswordWatcher {
   #manager;
   #settings;
-  #account;
+  #identity;
   #send;
   #recent = new Map();
   #seen = new Set();
 
-  constructor({ manager, settings, account, send }) {
+  constructor({ manager, settings, identity, send }) {
     this.#manager = manager;
     this.#settings = settings;
-    this.#account = account;
+    this.#identity = identity;
     this.#send = send || (() => {});
   }
 
   #enabled() {
     if (this.#settings && this.#settings.get("offerToSavePasswords") === false) return false;
-    // Nothing to offer if the feature itself is locked for this session.
-    const state = this.#account && this.#account.current;
-    return Boolean(state && state.authenticated === true && state.guest !== true);
+    // An offer is only worth showing if there is a vault to put it in and a local
+    // profile that owns it. A locked vault still accepts a save (that is the point
+    // of offering), but a save needs a profile, so that is what is checked here.
+    return Boolean(this.#identity && this.#identity.current());
   }
 
 // Fixed-window rate limit, keyed by tab. The window has to restart from a

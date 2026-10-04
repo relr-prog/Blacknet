@@ -105,10 +105,20 @@ async function pageState(view) {
     section: document.querySelector('#settings nav button.active')?.dataset.section || null,
     view: document.querySelector('#panel nav button.active')?.dataset.view || null,
     rows: document.querySelectorAll('.setting').length,
+    // The moved sections do not all build .setting rows - Account is a profile
+    // plus a step-up button, Network is a toggle - so "did this section paint
+    // anything at all" is the honest question.
+    content: document.querySelectorAll('#settings button, #settings input, #settings ul, #settings li, #settings p, #settings .pill, #settings table tr').length,
     pills: document.querySelectorAll('.pill').length,
     tableRows: document.querySelectorAll('table tr').length,
     empty: document.querySelectorAll('.empty').length,
     locked: document.querySelectorAll('.locked').length,
+    // The Account section's whole job is now the step-up, so the smoke asks for
+    // those two buttons by name rather than by position.
+    unlockButton: [...document.querySelectorAll('#settings button')]
+      .some((b) => /unlock/i.test(b.textContent || '')),
+    dashboardButton: [...document.querySelectorAll('#settings button')]
+      .some((b) => /dashboard/i.test(b.textContent || '')),
     status: document.getElementById('status').textContent,
   }))()`);
 }
@@ -214,41 +224,46 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       audio.available ? audio.reason : `unavailable: ${audio.reason}`,
     );
 
-    const service = await call("netops:service:status");
-    log(`python control plane: ${service.state} (${service.detail})`);
-
-    // The control plane is started in the background; give it a bounded amount of
-    // time so the smoke proves it really serves, not merely that it spawned.
-    for (let attempt = 0; attempt < 40 && service.state === "starting"; attempt += 1) {
-      await sleep(500);
-      const next = await call("netops:service:status");
-      if (next.state !== service.state) log(`python control plane: ${next.state} (${next.detail})`);
-      service.state = next.state;
-      service.detail = next.detail;
-    }
+    // --- local identity ------------------------------------------------------
+    // There is no control plane any more, so nothing here should be waiting on a
+    // server. This is the assertion that matters: no Python, no localhost API.
+    const account = await call("netops:account:available");
     check(
-      "control plane running",
-      service.state === "running",
-      `${service.state}: ${service.detail}`,
+      "local identity answers with no server",
+      account && account.available === true && account.local === true && typeof account.name === "string",
+      `identity ${account && account.name}`,
+    );
+
+    const vaultStatus = await call("netops:account:status");
+    check(
+      "vault reports locked until a step-up happens",
+      vaultStatus && vaultStatus.available === true && vaultStatus.locked === true && vaultStatus.verified === false,
+      `locked ${vaultStatus && vaultStatus.locked}, method ${vaultStatus && vaultStatus.method}`,
+    );
+    check(
+      "status carries no session or guest fields",
+      vaultStatus && !("guest" in vaultStatus) && !("authenticated" in vaultStatus),
     );
 
     // Load a real page through the tab's isolated session and prove it painted.
     // The window's own webContents paints nothing - every visible pixel belongs
-    // to a child view - so each view is captured on its own.
+    // to a child view - so each view is captured on its own. There is no control
+    // plane to navigate to any more, so this uses a data URL: still a real
+    // navigation through the tab session, with no server involved.
     const first = tabs[0].id;
-    if (service.state === "running") {
-      await call("netops:tabs:navigate", first, "http://127.0.0.1:8787/");
+    {
       const tabView = getViews().tab(first);
-      const committed = await waitForUrl(tabView, "http://127.0.0.1:8787");
-      const loaded = committed ? await waitForLoad(tabView) : false;
+      await tabView.webContents.loadURL(
+        "data:text/html,<title>Smoke</title><h1 id=marker>blacknet smoke page</h1>",
+      );
       const url = tabView.webContents.getURL();
-      check("control plane page loaded", loaded && url.startsWith("http://127.0.0.1:8787"), url);
+      check("a real page loaded through the tab session", url.startsWith("data:text/html"), url.slice(0, 40));
 
       // A blank page also produces a valid bitmap, so ask the page itself.
       const text = await tabView.webContents
         .executeJavaScript("document.body ? document.body.innerText.length : 0")
         .catch(() => 0);
-      check("dashboard has content", text > 20, `${text} characters of text`);
+      check("the loaded page has content", text > 10, `${text} characters of text`);
 
       await sleep(800);
       const tabShot = await capture(getViews().tab(first), "smoke-tab.png");
@@ -269,7 +284,7 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     }
     const ui = await chromeState(chromeView);
     check("tab strip populated", ui.tabs === tabs.length, `${ui.tabs} tab element(s)`);
-    check("address bar follows tab", ui.url.startsWith("http://127.0.0.1:8787"), ui.url);
+    check("address bar follows tab", ui.url.startsWith("data:text/html"), ui.url.slice(0, 48));
     // The top bar brand mark is a local file:// image: it only renders if the
     // request filter lets the shell's own assets through.
     check(
@@ -363,6 +378,21 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     const rereadLook = await call("netops:settings:read");
     check("settings persisted", rereadLook.scheme === "light" && rereadLook.background === "#101010");
 
+    // The rotator is a child process now, not a server route. Asking for status
+    // while it is off must answer from local state rather than hang or throw, and
+    // it must not claim to be live.
+    const rotatorOff = await call("netops:rotator:status");
+    check(
+      "rotator status answers without a control plane",
+      rotatorOff && rotatorOff.live === false && rotatorOff.rotatorEnabled === false,
+      `state ${rotatorOff && rotatorOff.rotatorState}, detail ${rotatorOff && rotatorOff.rotatorDetail}`,
+    );
+    const rotatorRestarted = await call("netops:rotator:set", false);
+    check(
+      "rotator can be stopped idempotently",
+      rotatorRestarted && rotatorRestarted.rotatorEnabled === false,
+    );
+
     const badColour = await call("netops:settings:write", { background: "javascript:alert(1)" });
     check("bad colour refused", badColour.background === null, String(badColour.background));
 
@@ -386,11 +416,15 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     // Put the palette back the way it was found.
     await call("netops:settings:write", { scheme: "auto", background: null });
 
-    const account = await call("netops:account:state", true);
+    const profile = await call("netops:account:available");
     check(
-      "account state resolved",
-      account && typeof account.authenticated === "boolean" && typeof account.guest === "boolean",
-      `authenticated ${account && account.authenticated}, guest ${account && account.guest}`,
+      "local profile resolved",
+      profile && profile.available === true && profile.local === true,
+      `profile ${profile && profile.name}`,
+    );
+    check(
+      "profile state carries no session fields",
+      profile && !("authenticated" in profile) && !("isAdmin" in profile) && !("guest" in profile),
     );
 
     const passwordStatus = await call("netops:passwords:status");
@@ -400,31 +434,39 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       `available ${passwordStatus && passwordStatus.available}, method ${passwordStatus && passwordStatus.method}`,
     );
 
-    // A guest (or signed-out) session must be refused outright. The smoke profile
-    // is anonymous, so this is the case that must hold.
-    let passwordRefusal = "";
+    // Reading a secret out of a locked vault must be refused. This is the check
+    // that replaced the old "a guest cannot use the password manager" one: there
+    // is no session to downgrade any more, so the step-up is the only thing
+    // between a caller and a stored password, and it has to actually hold. The
+    // refusal text varies by platform and by whether a terminal is installed, so
+    // the assertion is simply that it refused and no secret came back.
+    let revealRefusal = "";
+    let revealed = null;
     try {
-      await call("netops:passwords:list");
+      revealed = await call("netops:passwords:reveal", "0".repeat(32));
     } catch (error) {
-      passwordRefusal = error.message;
+      revealRefusal = error.message;
     }
     check(
-      "password list refuses an unlocked session",
-      passwordRefusal === "" || /log in to unlock/i.test(passwordRefusal),
-      passwordRefusal || "allowed (signed in)",
+      "a locked vault refuses to reveal",
+      revealRefusal !== "" && revealed === null,
+      revealRefusal || "ALLOWED - the vault opened with no step-up",
+    );
+    check(
+      "no secret is ever returned while locked",
+      revealed === null || revealed.password === undefined,
     );
 
-    let rotatorRefusal = "";
+    // The rotator switch used to be admin-only over HTTP. It is a local preference
+    // now, so it must succeed here rather than refusing a role that no longer
+    // exists - and it must not leave a gateway running if it fails.
+    let rotatorError = "";
     try {
-      await call("netops:rotator:set", true);
+      await call("netops:rotator:set", false);
     } catch (error) {
-      rotatorRefusal = error.message;
+      rotatorError = error.message;
     }
-    check(
-      "rotator switch refuses a non-admin",
-      rotatorRefusal === "" || /log in as an administrator|guest sessions/i.test(rotatorRefusal),
-      rotatorRefusal || "allowed (admin)",
-    );
+    check("rotator switch is a local preference, not an admin action", rotatorError === "", rotatorError);
 
     // The password hook must never be attached to a page in this state, and the
     // capture path must refuse the report rather than store anything.
@@ -476,7 +518,7 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       );
       for (let attempt = 0; attempt < 20; attempt += 1) {
         const current = await pageState(pageView);
-        if (current.section === section && (current.rows > 0 || current.locked > 0)) {
+        if (current.section === section && (current.rows > 0 || current.content > 0)) {
           break;
         }
         await sleep(250);
@@ -484,19 +526,33 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       const sectionUi = await pageState(pageView);
       check(
         `${section} section rendered`,
-        sectionUi.section === section && (sectionUi.rows > 0 || sectionUi.locked > 0),
-        `${sectionUi.rows} row(s), ${sectionUi.locked} lock notice(s)`,
+        sectionUi.section === section && (sectionUi.rows > 0 || sectionUi.content > 0),
+        `${sectionUi.rows} setting row(s), ${sectionUi.content} element(s)`,
       );
     }
 
-    const lockedUi = await pageState(pageView);
-    if (!passwordStatus.available) {
-      check(
-        "locked features show the login notice",
-        lockedUi.locked > 0,
-        `${lockedUi.locked} lock notice(s)`,
-      );
+    // The Account section used to be a login notice and a button to open a
+    // dashboard. It is now a profile plus the step-up that actually opens the
+    // vault, so that is what has to be on screen.
+    await pageView.webContents.executeJavaScript(
+      "document.querySelector('#settings nav button[data-section=account]').click()",
+    );
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const current = await pageState(pageView);
+      if (current.section === "account") break;
+      await sleep(250);
     }
+    const accountUi = await pageState(pageView);
+    check(
+      "account section offers the step-up, not a login",
+      accountUi.section === "account" && accountUi.unlockButton === true,
+      `section ${accountUi.section}, unlock button ${accountUi.unlockButton}`,
+    );
+    check(
+      "no dashboard button is left behind",
+      accountUi.dashboardButton === false,
+      `dashboard button present: ${accountUi.dashboardButton}`,
+    );
 
     const offerUi = await chromeState(chromeView);
     check(

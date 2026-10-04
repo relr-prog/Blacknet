@@ -10,7 +10,7 @@ const { randomKey } = require("../src/main/vault");
 
 const KEY = randomKey();
 
-function harness({ authenticated = true, guest = false, isAdmin = true, username = "rel4ever", key = KEY } = {}) {
+function harness({ name = "Local", hasIdentity = true, key = KEY } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-pm-"));
   const clipboard = { value: null, writeText(text) { this.value = text; } };
   const reauth = {
@@ -32,30 +32,40 @@ function harness({ authenticated = true, guest = false, isAdmin = true, username
     },
     installKey: async () => ({ ok: true }),
   };
-  const account = {
-    current: { authenticated, guest, isAdmin, username, role: isAdmin ? "admin" : "operator" },
+  // One local profile per installation, created on first run. `hasIdentity: false`
+  // stands in for a corrupt or half-removed userData, which is the only way the
+  // profile check should ever refuse.
+  const identity = {
+    current: () => (hasIdentity ? { id: "abc", name, createdAt: 1 } : null),
+    describe: () => ({ available: hasIdentity, name: hasIdentity ? name : "", createdAt: 1 }),
   };
   const manager = new PasswordManager({
     vault: { dir: path.join(dir, "vault") },
-    account,
+    identity,
     reauth,
     keyProvider: async () => key,
   });
-  return { manager, reauth, account, clipboard, dir };
+  return { manager, reauth, identity, clipboard, dir };
 }
 
 const entry = { origin: "https://example.com/login", username: "rel4ever", password: "hunter2" };
 
-test("a guest cannot use the password manager at all", async () => {
-  const { manager } = harness({ guest: true });
-  assert.throws(() => manager.list(), /Please log in to unlock this feature.*guest/);
-  await assert.rejects(() => manager.save(entry), /Please log in to unlock this feature.*guest/);
-  await assert.rejects(() => manager.reveal("x"), /Please log in to unlock this feature.*guest/);
+test("with no local profile the vault refuses to be used at all", async () => {
+  // A guest or a signed-out session used to be refused here. Neither exists any
+  // more, so the only way to reach this is a damaged profile directory - and the
+  // safe answer is to refuse rather than to silently operate on an unowned vault.
+  const { manager } = harness({ hasIdentity: false });
+  assert.throws(() => manager.list(), /no local profile owns the password manager/);
+  await assert.rejects(() => manager.save(entry), /no local profile owns the password manager/);
+  await assert.rejects(() => manager.reveal("x"), /no local profile owns the password manager/);
 });
 
-test("a signed-out session is refused with the same wording", async () => {
-  const { manager } = harness({ authenticated: false });
-  assert.throws(() => manager.list(), /Please log in to unlock this feature.*signed out/);
+test("the vault is still gated by the step-up key, not by a profile", async () => {
+  // The profile exists and grants nothing: when the step-up cannot produce a key,
+  // a save must still fail. This is the invariant that matters after the session
+  // gate went - a local profile is not a substitute for key material.
+  const { manager } = harness({ key: null });
+  await assert.rejects(() => manager.save(entry), /vault key/i);
 });
 
 test("save then reveal returns the password", async () => {
@@ -250,11 +260,17 @@ test("status explains the unlock state without exposing secrets", () => {
   assert.equal("password" in status, false);
 });
 
-test("status reports a guest as unavailable", () => {
-  const { manager } = harness({ guest: true });
+test("status reports a missing profile as unavailable", () => {
+  const { manager } = harness({ hasIdentity: false });
   const status = manager.status();
   assert.equal(status.available, false);
-  assert.equal(status.guest, true);
+});
+
+test("status carries no guest flag: the concept is gone", () => {
+  const { manager } = harness();
+  const status = manager.status();
+  assert.equal(status.available, true);
+  assert.equal("guest" in status, false);
 });
 
 // No key provider means Linux, where the key only exists inside the step-up.
@@ -285,7 +301,7 @@ function linuxHarness() {
   };
   const manager = new PasswordManager({
     vault: { dir: path.join(dir, "vault") },
-    account: { current: { authenticated: true, guest: false, isAdmin: true, username: "rel4ever" } },
+    identity: { current: () => ({ id: "abc", name: "Local", createdAt: 1 }) },
     reauth,
     keyProvider: null,
   });
@@ -336,7 +352,7 @@ test("a step-up that returns no key fails with a clear message", async () => {
   };
   const manager = new PasswordManager({
     vault: { dir: path.join(dir, "vault") },
-    account: { current: { authenticated: true, guest: false, isAdmin: true, username: "rel4ever" } },
+    identity: { current: () => ({ id: "abc", name: "Local", createdAt: 1 }) },
     reauth,
     keyProvider: null,
   });
@@ -361,7 +377,7 @@ test("a cancelled step-up aborts the save", async () => {
   };
   const manager = new PasswordManager({
     vault: { dir: path.join(dir, "vault") },
-    account: { current: { authenticated: true, guest: false, isAdmin: true, username: "rel4ever" } },
+    identity: { current: () => ({ id: "abc", name: "Local", createdAt: 1 }) },
     reauth,
     keyProvider: null,
   });

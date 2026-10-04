@@ -15,7 +15,6 @@ const EVENTS = [
   "netops:download",
   "netops:password-offer",
   "netops:settings",
-  "netops:account",
 ];
 
 contextBridge.exposeInMainWorld("netops", {
@@ -52,7 +51,6 @@ contextBridge.exposeInMainWorld("netops", {
   },
 
   // --- shell --------------------------------------------------------------
-  service: () => ipcRenderer.invoke("netops:service:status"),
   audio: () => ipcRenderer.invoke("netops:audio:status"),
   logs: () => ipcRenderer.invoke("netops:logs"),
   openExternal: (url) => ipcRenderer.invoke("netops:open-external", url),
@@ -74,17 +72,21 @@ contextBridge.exposeInMainWorld("netops", {
   },
 
   // --- account -------------------------------------------------------------
-  // state() is safe to call anywhere: it reports the session without unlocking
-  // anything. requireAccount() is the one that throws for a guest.
+  // The local profile. There is no session to inspect and nothing to log in to,
+  // so every call here is a local read or a local rename. The one that matters
+  // is unlock(): it asks the step-up to prove the operator is present, and that
+  // proof - not this profile - is what opens the vault.
   account: {
-    state: (refresh) => ipcRenderer.invoke("netops:account:state", Boolean(refresh)),
+    state: () => ipcRenderer.invoke("netops:account:state"),
     available: () => ipcRenderer.invoke("netops:account:available"),
-    openDashboard: () => ipcRenderer.invoke("netops:account:open-dashboard"),
+    rename: (name) => ipcRenderer.invoke("netops:account:rename", String(name || "")),
+    unlock: (options) => ipcRenderer.invoke("netops:account:unlock", options || {}),
+    status: () => ipcRenderer.invoke("netops:account:status"),
   },
 
   // --- passwords -----------------------------------------------------------
-  // Every call is gated in main by the account check and, for anything that
-  // returns a secret, by a step-up prompt. list() never returns a password.
+  // Every call is gated in main, and anything that returns a secret is gated
+  // behind a fresh step-up. list() never returns a password.
   passwords: {
     status: () => ipcRenderer.invoke("netops:passwords:status"),
     list: () => ipcRenderer.invoke("netops:passwords:list"),
