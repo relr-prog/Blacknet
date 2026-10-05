@@ -179,6 +179,33 @@ async function renderAppearance() {
   settingsBody.append(
     row("Ask before saving", offer.label, "Prompt when a page submits a new login."),
   );
+
+  const restore = labelled("Reopen tabs on start", "input", {
+    id: "set-restore",
+    type: "checkbox",
+  });
+  restore.input.checked = values.restoreSession !== false;
+  restore.input.addEventListener("change", () =>
+    run(() => writeSettings({ restoreSession: restore.input.checked })),
+  );
+  settingsBody.append(
+    row(
+      "Reopen previous tabs",
+      restore.label,
+      "Stores the URLs you had open, locally. Nothing else, and no history.",
+    ),
+  );
+
+  const forget = document.createElement("button");
+  forget.type = "button";
+  forget.textContent = "Forget saved tabs";
+  forget.addEventListener("click", () =>
+    run(async () => {
+      unwrap(await window.netops.session.clear());
+      await showSection("appearance");
+    }),
+  );
+  settingsBody.append(row("Saved session", forget, "Clears it without turning restore off."));
 }
 
 function defaultBackground(scheme) {
@@ -224,7 +251,7 @@ async function renderNetwork() {
 
   const detail = document.createElement("p");
   detail.className = "mono";
-  detail.textContent = live.rotatorDetail || (live.live ? "no detail" : "control plane offline");
+  detail.textContent = live.rotatorDetail || (live.live ? "no detail" : "gateway not running");
   settingsBody.append(detail);
 }
 
@@ -676,6 +703,53 @@ async function renderService() {
         ? `, exits in ${status.pool.countries.join(", ")}`
         : "");
     panelBody.append(detail);
+  }
+
+  // The question this whole feature exists to answer: is the exit IP really
+  // changing? Healthy upstreams are not the answer - they can all resolve to one
+  // address - so this is stated from the exit IPs the gateway actually observed,
+  // and the wording says so when that is not yet known.
+  const verdict = (status.pool && status.pool.rotation) || null;
+  if (verdict) {
+    const headline = document.createElement("p");
+    const state = document.createElement("span");
+    const wording = {
+      rotating: ["ok", `Rotating across ${verdict.distinctExitIps} exit IPs`],
+      "single-exit": ["bad", "One exit IP - not rotating"],
+      unknown: ["", "Exit IPs not identified yet"],
+      down: ["bad", "No healthy upstreams"],
+      unconfigured: ["bad", "No upstreams configured"],
+    }[verdict.verdict] || ["", verdict.verdict];
+    state.className = `pill ${wording[0]}`;
+    state.textContent = wording[1];
+    headline.append(state);
+    panelBody.append(headline);
+
+    if (verdict.verdict === "single-exit") {
+      const why = document.createElement("p");
+      why.className = "muted";
+      why.textContent =
+        `${verdict.healthy} upstream(s) are healthy but share a single exit address. `
+        + "Traffic is proxied, but every request looks like it came from the same place.";
+      panelBody.append(why);
+    }
+
+    // The per-upstream table. Credentials are not here: the gateway redacts them
+    // before they reach the status port, and this view has no access to the pool
+    // files that hold them.
+    if (status.pool.list && status.pool.list.length) {
+      panelBody.append(
+        table(status.pool.list, [
+          ["tier", (row) => row.tier],
+          ["upstream", (row) => row.label],
+          ["exit IP", (row) => row.exitIp || "-"],
+          ["cc", (row) => row.country || "-"],
+          ["ms", (row) => (row.latencyMs === null ? "-" : Math.round(row.latencyMs))],
+          ["state", (row) => (row.healthy ? (row.inUse ? "in use" : "healthy") : "down")],
+          ["errors", (row) => row.lastError || (row.fail ? String(row.fail) : "-")],
+        ]),
+      );
+    }
   }
 
   const logs = unwrap(await window.netops.logs());

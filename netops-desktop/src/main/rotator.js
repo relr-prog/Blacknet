@@ -246,11 +246,88 @@ class RotatorService {
         healthy: (body.pool && Number(body.pool.healthy)) || 0,
         countries: (body.pool && body.pool.countries) || [],
         detail: describe(body),
+        // Per-upstream detail, which is the only thing that answers "is my exit IP
+        // actually rotating?". The gateway reports the exit IP each upstream
+        // resolved to, so the answer is observed rather than assumed.
+        list: readUpstreams(body),
+        rotation: rotationVerdict(body),
       };
     } catch {
       return null;
     }
   }
+}
+
+// One row per upstream, for the egress view.
+//
+// Only what an operator needs to act on, and no credentials: the gateway's label
+// is already redacted, and nothing here re-derives it from the pool files.
+function readUpstreams(body) {
+  const rows = Array.isArray(body.upstreams) ? body.upstreams : [];
+  return rows.map((row) => ({
+    id: String(row.id || ""),
+    label: String(row.label || ""),
+    tier: String(row.tier ?? ""),
+    kind: String(row.kind || ""),
+    healthy: row.healthy === true,
+    inUse: row.in_use === true,
+    exitIp: row.exit_ip || null,
+    country: row.country || null,
+    latencyMs: typeof row.latency_ms === "number" ? row.latency_ms : null,
+    ok: Number(row.ok) || 0,
+    fail: Number(row.fail) || 0,
+    lastError: row.last_error ? String(row.last_error) : null,
+  }));
+}
+
+// Whether rotation is real, stated as a plain verdict.
+//
+// This is the question the whole feature exists to answer, so it is answered
+// from observed exit IPs rather than from the configured count. Seven upstreams
+// that all resolve to the same IP are one exit, and a pool with no exit IPs at
+// all has told us nothing either way. Saying "rotating" in either case would be
+// the most useful-looking lie available.
+function rotationVerdict(body) {
+  const rows = readUpstreams(body);
+  const healthy = rows.filter((row) => row.healthy);
+  const exits = new Set(healthy.map((row) => row.exitIp).filter(Boolean));
+  const observed = healthy.filter((row) => Boolean(row.exitIp)).length;
+
+  if (!rows.length) {
+    return { verdict: "unconfigured", distinctExitIps: 0, observed: 0, healthy: 0, total: 0 };
+  }
+  if (!healthy.length) {
+    return { verdict: "down", distinctExitIps: 0, observed: 0, healthy: 0, total: rows.length };
+  }
+  if (!observed) {
+    // Upstreams are up but nothing has been identified yet. This is the normal
+    // state for a few seconds after start, so it is not called a failure.
+    return {
+      verdict: "unknown",
+      distinctExitIps: 0,
+      observed: 0,
+      healthy: healthy.length,
+      total: rows.length,
+    };
+  }
+  if (exits.size > 1) {
+    return {
+      verdict: "rotating",
+      distinctExitIps: exits.size,
+      observed,
+      healthy: healthy.length,
+      total: rows.length,
+    };
+  }
+  // Every healthy upstream resolved to one address. That is a single exit, and it
+  // is exactly the case a count of healthy upstreams would have called fine.
+  return {
+    verdict: "single-exit",
+    distinctExitIps: 1,
+    observed,
+    healthy: healthy.length,
+    total: rows.length,
+  };
 }
 
 // A gateway can be listening with nothing healthy behind it, and "listening" on
@@ -264,4 +341,10 @@ function describe(body) {
   return `${healthy}/${total} upstreams healthy`;
 }
 
-module.exports = { RotatorService, findRotatorProject, parsePorts, describe };
+module.exports = {
+  RotatorService,
+  findRotatorProject,
+  parsePorts,
+  describe,
+  rotationVerdict,
+};
