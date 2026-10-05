@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -133,6 +134,37 @@ def _apply_options(spec: UpstreamSpec, fragment: str) -> UpstreamSpec:
     return replace(spec, tags=tags, **overrides)
 
 
+def expand_secrets(line: str) -> str:
+    """Expand ``${VAR}`` and ``${VAR:-default}`` from the environment.
+
+    Credentials have to live somewhere, and the pool files are the one thing
+    people accidentally commit. Putting a real password in ``pools/*.txt`` means
+    it ends up in git history, in a Docker image, and in a bug report, and there
+    is no way to take it back. Reading it from the environment keeps the secret
+    out of every one of those places.
+
+    A missing variable with no default is an error rather than an empty string,
+    because ``socks5://:@host:1080`` is a confusing failure that looks like a
+    bad proxy instead of a missing password.
+    """
+    if "${" not in line:
+        return line
+
+    def replace(match: re.Match[str]) -> str:
+        name, _, default = match.group(1).partition(":-")
+        value = os.environ.get(name.strip())
+        if value is None or value == "":
+            value = default
+        if value == "":
+            raise ValueError(
+                f"credential variable {name.strip()!r} is not set "
+                "(give it a default with ${VAR:-value} to make it optional)"
+            )
+        return value
+
+    return re.sub(r"\$\{([^}]*)\}", replace, line)
+
+
 def _split_comment(line: str) -> tuple[str, str]:
     """Split a line into content and inline comment.
 
@@ -166,13 +198,18 @@ def parse_upstream_line(
     raw, _comment = _split_comment(line)
     if not raw:
         raise ValueError("empty line")
+    # Expanded before parsing, and never echoed back: parse_upstream_line's error
+    # messages quote the raw line, which by now holds a real password.
+    raw = expand_secrets(raw)
     base, _, fragment = raw.partition("#")
 
     if "://" in base:
         parts = urlsplit(base)
         kind = _SCHEME_KINDS.get(parts.scheme.lower())
         if kind is None:
-            raise ValueError(f"unsupported scheme {parts.scheme!r} in {raw!r}")
+            # The host is quoted rather than the whole line: the line now holds a
+            # real password, and an error message is a log line.
+            raise ValueError(f"unsupported scheme {parts.scheme!r} for host {parts.hostname!r}")
         host = parts.hostname or ""
         port = parts.port
         username = unquote(parts.username) if parts.username else None
@@ -191,7 +228,7 @@ def parse_upstream_line(
                 fragment,
             )
         if not host:
-            raise ValueError(f"missing host in {raw!r}")
+            raise ValueError(f"upstream has no host: {kind.value}://<redacted>")
         if port is None:
             port = 8080 if kind is UpstreamKind.HTTP else 1080
         spec = UpstreamSpec(
@@ -253,7 +290,8 @@ def parse_upstream_line(
             ),
             fragment,
         )
-    raise ValueError(f"cannot parse upstream line: {raw!r}")
+    # Redacted: this line has already had its credentials expanded.
+    raise ValueError("cannot parse upstream line (expected host:port or a scheme:// URL)")
 
 
 def parse_pool_text(

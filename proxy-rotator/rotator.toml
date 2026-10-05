@@ -30,6 +30,17 @@ resolve_geo = true          # resolve exit IP -> country so X-Rotator-Country wo
 geo_template = "https://ipwho.is/{ip}"
 
 # --- tier 1: paid residential provider (highest priority) ------------------
+#
+# Credentials come from the environment, not from this file or from pools/*.txt.
+# A password written into a pool file ends up in git history, in any image built
+# from this tree, and in whatever bug report somebody pastes it into - and none of
+# those can be taken back. So:
+#
+#   export RES_PROXY_USER='your-account'
+#   export RES_PROXY_PW='your-password'
+#
+# ${VAR} is required and fails loudly if unset. ${VAR:-default} is optional, which
+# is the right choice for a pool where only some entries are authenticated.
 [[tier]]
 name = "residential"
 strategy = "weighted_random"

@@ -88,3 +88,66 @@ def test_id_is_stable_and_secrets_are_hidden():
     assert spec.id != parse_upstream_line("http://user:pass@1.2.3.5:8080").id
     assert "pass" not in spec.label
     assert "user:***@" in spec.label
+
+
+# --- credentials from the environment ---------------------------------------
+#
+# A password in pools/*.txt ends up in git history, in a Docker image and in a bug
+# report, and none of those can be taken back. ${VAR} keeps it in the environment,
+# which is the only place a secret can actually be revoked from.
+
+
+def test_password_can_come_from_the_environment(monkeypatch):
+    monkeypatch.setenv("TEST_PW", "hunter2")
+    spec = parse_upstream_line("socks5://user:${TEST_PW}@1.2.3.4:1080")
+    assert spec.username == "user"
+    assert spec.password == "hunter2"
+    assert "hunter2" not in spec.label, "an expanded password must never be shown"
+
+
+def test_a_missing_variable_is_an_error_not_an_empty_password(monkeypatch):
+    # socks5://:@host would look like a broken proxy rather than a missing secret.
+    monkeypatch.delenv("TEST_ABSENT", raising=False)
+    with pytest.raises(ValueError, match="TEST_ABSENT"):
+        parse_upstream_line("socks5://user:${TEST_ABSENT}@1.2.3.4:1080")
+
+
+def test_an_empty_variable_is_treated_as_missing(monkeypatch):
+    monkeypatch.setenv("TEST_EMPTY", "")
+    with pytest.raises(ValueError, match="TEST_EMPTY"):
+        parse_upstream_line("socks5://user:${TEST_EMPTY}@1.2.3.4:1080")
+
+
+def test_a_default_makes_a_variable_optional(monkeypatch):
+    monkeypatch.delenv("TEST_DEFAULT", raising=False)
+    spec = parse_upstream_line("socks5://user:${TEST_DEFAULT:-guest}@1.2.3.4:1080")
+    assert spec.password == "guest"
+
+
+def test_expansion_happens_before_parsing(monkeypatch):
+    monkeypatch.setenv("TEST_PW", "pw")
+    monkeypatch.setenv("TEST_HOST", "1.2.3.4")
+    spec = parse_upstream_line("http://user:${TEST_PW}@${TEST_HOST}:8080")
+    assert (spec.host, spec.port) == ("1.2.3.4", 8080)
+
+
+def test_pool_text_expands_too(monkeypatch):
+    monkeypatch.setenv("TEST_PW", "hunter2")
+    specs = parse_pool_text("# comment\nsocks5://u:${TEST_PW}@1.2.3.4:1080\n")
+    assert specs[0].password == "hunter2"
+
+
+def test_no_error_message_echoes_an_expanded_secret(monkeypatch):
+    monkeypatch.setenv("TEST_SECRET", "topsecret123")
+    with pytest.raises(ValueError) as excinfo:
+        parse_upstream_line("ftp://user:${TEST_SECRET}@1.2.3.4:21")
+    assert "topsecret123" not in str(excinfo.value)
+
+
+def test_an_unset_variable_message_names_the_variable_not_the_line(monkeypatch):
+    monkeypatch.delenv("TEST_NAMED", raising=False)
+    with pytest.raises(ValueError) as excinfo:
+        parse_upstream_line("socks5://user:${TEST_NAMED}@1.2.3.4:1080")
+    message = str(excinfo.value)
+    assert "TEST_NAMED" in message, "the operator needs to know which one to set"
+    assert "@1.2.3.4" not in message, "and not the line it came from"
