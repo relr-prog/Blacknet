@@ -54,7 +54,7 @@ async function rotatorStatus(settings, rotator) {
   return { ...settings.all(), live: Boolean(live), pool: live };
 }
 
-function createActions({ core, tabs, clipboard, settings, identity, passwords, rotator }) {
+function createActions({ core, tabs, clipboard, settings, identity, passwords, rotator, sessionStore }) {
   const actions = {
     // --- tabs -------------------------------------------------------------
     "netops:tabs:list": () => tabs.list(),
@@ -102,6 +102,17 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, r
     actions["netops:settings:read"] = () => settings.all();
     actions["netops:settings:write"] = (patch) => settings.patch(patch || {});
     actions["netops:settings:css-variables"] = () => settings.cssVariables();
+  }
+
+  // Turning session restore off stops new recording; it deliberately leaves what
+  // was already saved alone. Erasing somebody's history is not something a toggle
+  // in a settings panel should do behind their back - that is what the separate
+  // "forget saved tabs" action is for, where the intent is stated.
+  if (sessionStore) {
+    actions["netops:session:clear"] = () => {
+      sessionStore.clear();
+      return { cleared: true, restoreSession: settings.get("restoreSession") !== false };
+    };
   }
 
   // One local identity, created on first run, with no password behind it. There is

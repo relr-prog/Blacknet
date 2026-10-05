@@ -1,74 +1,127 @@
 # BlackNet
 
-Desktop browser and control plane for a self-hosted, privacy-respecting
-network stack. Three components:
+A desktop browser with a rotating proxy, a tracker counter, and a password vault
+that needs an OS key rather than an account.
 
 | Path | What it is | Runtime |
 | --- | --- | --- |
-| `netops/` | Auth, sessions, audit log, rotator wiring, scanner, tools, browser service | Python 3.13 / FastAPI |
-| `netops-desktop/` | BlackNet Electron shell: tabs, palette, settings, account, rotator, password manager | Node 20 / Electron |
-| `proxy-rotator/` | Rotating upstream proxy pool | Python |
+| `netops-desktop/` | The browser. Tabs, chrome, settings, vault, telemetry, and supervision of the proxy gateway | Node 20 / Electron + a C++20 policy addon |
+| `proxy-rotator/` | The rotating upstream proxy the browser can route through | Python 3.11+ |
+| `netops/` | **Retired.** The old Python control plane. Nothing in the desktop shell reads it | Unused |
 
-## Why it is split this way
+## What actually runs
 
-`netops` owns state that must outlive any single session: users, password
-hashes, session fingerprints, the audit log and the rotator connection. It is a
-separate service so that killing or reinstalling the desktop shell cannot lose
-it.
+Two processes, and nothing else:
 
-`netops-desktop` is a client of that service. It talks to it over loopback
-HTTP using the operator's session cookie, and it keeps secrets that the service
-never sees: the vault key and every stored password live only on the desktop
-side, wrapped by an OS-protected random key.
+```
+Electron shell ── spawns ──> rotator serve -c rotator.toml
+     │                          │
+     │ HTTP 8888 / SOCKS5 1080 <-┘  (the browser's proxy)
+     │ HTTP 9099 /status  <───────  (health, exit IPs)
+     └── C++ addon: URL policy, tracker blocklist, cookies, cache index
+```
 
-`proxy-rotator` is deliberately still Python and separate, because it is the
-one component scheduled to be rewritten in-process later. Keeping it behind its
-own service boundary is what makes that rewrite a swap rather than a rewrite.
+There is no Python in the browser process, no uvicorn, no localhost web server,
+and no dashboard. Switching the proxy on is a switch the operator owns the
+machine for; it never needed a second language runtime to do it.
+
+## Features, and how far each one is honestly finished
+
+| Feature | State |
+| --- | --- |
+| Tabs, profiles, navigation, address bar | Working |
+| Tracker blocking (56 rules) with a live per-tab count | Working |
+| Privacy grade (0-100) and host-level report, JSON export | Working, **not persisted** — it is cleared on exit |
+| Rotating proxy: start/stop, health probing, exit IP display | Working. Real rotation needs real provider credentials (see below) |
+| Encrypted vault, per-record AES-256-GCM | Working |
+| OS step-up: Windows Hello + DPAPI, macOS Touch ID, Linux sudo | Implemented. Windows and Linux paths are hard to verify in a headless environment |
+| Session restore | Working. Stores URLs and the active tab, nothing else; opt out in Settings |
+| Settings schema | One typed table; reads and writes validated identically |
+
+Not built, and not pretending to be: per-site fingerprint profiles, Tor/I2P,
+request rewriting, a shared fingerprint marketplace, any AI layer.
+
+## Proxy credentials
+
+Upstream lists live in `proxy-rotator/pools/`, which is gitignored. Passwords are
+referenced from the environment rather than written down:
+
+```
+198.51.100.10:8080:${RES_USER:-alice}:${RES_PW}#weight=3,tag=isp
+```
+
+- `${VAR}` is required. An unset or empty value is a startup error that names the
+  variable, because `socks5://:@host` looks exactly like a broken proxy.
+- `${VAR:-default}` is optional, for pools where only some entries need auth. The
+  example above has no default for the password on purpose — an authenticated
+  upstream with no password configured is a mistake worth stopping for.
+
+Passwords never reach the pool file, the status endpoint, the logs or the UI. The
+gateway's own labels are redacted to `user:***@host`, and expansion happens before
+parsing so that an error can quote a scheme without quoting a credential.
+
+Check what is actually being used:
+
+```sh
+cd proxy-rotator
+.venv/bin/rotator validate -c rotator.toml   # config parses, N upstreams
+.venv/bin/rotator check -c rotator.toml      # probe each, print real exit IPs
+.venv/bin/rotator bench -c rotator.toml      # measure rotation
+```
+
+The browser's Settings tab shows the same thing, and states the verdict in terms
+of observed exit addresses: *rotating* requires more than one distinct exit. A
+pool of healthy upstreams that all resolve to one address is reported as
+**one exit IP - not rotating**, because that is what it is.
 
 ## Security model
 
-- Passwords are stored per-record with AES-256-GCM, a fresh 96-bit IV, and AAD
-  bound to the storage id, origin and username. Listing entries never decrypts.
-- The vault key is generated by the OS, not derived from a password: Windows
-  Hello (a presence check, backed by DPAPI at rest), macOS Touch ID via the
-  keychain, or on Linux a sudo step-up that ends in root reading a `0600`
-  root-owned key file.
+- Vault records: AES-256-GCM, fresh 96-bit IV per record, AAD bound to storage id,
+  origin and username. Listing entries never decrypts.
+- The vault key is generated by the OS, not derived from a password: Windows Hello
+  (a presence check, DPAPI at rest), macOS Touch ID via the keychain, or on Linux a
+  sudo step-up ending in root reading a `0600` root-owned key file.
 - Step-up is required to reveal or copy, not to list.
-- Password capture is one-way and origin-validated; the page's own URL is the
-  only thing the hook may observe. Private and loopback origins are refused.
-- The sudo password is never written to disk, logged, or returned to the
-  renderer. It is transmitted exactly once per step-up.
+- Password capture is one-way and origin-validated; the page's own URL is all the
+  hook may observe. Private and loopback origins are refused.
+- The sudo password is never written to disk, logged, or returned to the renderer.
+  It is transmitted exactly once per step-up.
+- Ordinary web tabs get no preload at all. Only the shell's own pages and the
+  password hook's remote-content exception get a bridge.
+- Telemetry is host-level and in memory: no full URLs, paths or query strings are
+  stored or exported.
 
 ## Requirements
 
-- Debian/Ubuntu with `python3.13`, `libpulse0` (audio), and WSLg on Windows
-- Node 20 for the desktop shell
-- A C++20 toolchain for the native policy addon
+- Debian/Ubuntu with `python3.13` and `libpulse0` (audio), WSLg on Windows
+- Node 20, Electron
+- A C++20 toolchain for the native addon (CMake)
+- `python3.13` for the rotator if you use it
 
 ## Development
 
 ```sh
-# desktop
 cd netops-desktop
 npm install
-npm test               # contrast + native addon tests + ctest
-npm run smoke          # Electron, headless
-bash tools/check_syntax.sh   # JS syntax + the node:test suite
-node tools/check_helper.js   # python syntax of the reauth helper
+npm test                       # contrast check + ctest (40) + node:test (223)
+npm run smoke                  # real Electron window, headless, 85 checks
+bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
-# control plane
-cd netops
-.venv/bin/python -m pytest
-
-# rotator
-cd proxy-rotator
-.venv/bin/python -m pytest
+cd ../proxy-rotator
+.venv/bin/python -m pytest     # 76 tests
 ```
+
+`tools/check_syntax.sh` is the gate that runs everything that runs without a
+display. `npm run smoke` is the one that exercises a real window, a real
+`WebContentsView`, a real preload contract and the C++ policy, including a forced
+renderer crash.
 
 ## Runtime files
 
-None of these are tracked; they are per-machine state.
+Per-machine state, none of it tracked:
 
-- `netops/data/netops.db` - users, password hashes, sessions, audit log
-- `proxy-rotator/pools/` - upstream proxy lists
-- `~/.config/blacknet-desktop/` - settings and the encrypted vault
+- `<userData>/settings.json` — preferences, validated against the schema
+- `<userData>/session.json` — the saved tab list
+- `<userData>/vault/` — the encrypted vault
+- `<userData>/identity.json` — the local profile name (no password)
+- `proxy-rotator/pools/` — upstream lists

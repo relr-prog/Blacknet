@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { Settings, normaliseHex } = require("../src/main/settings");
+const { Settings, SCHEMA, DEFAULTS, normaliseHex } = require("../src/main/settings");
 
 function tempSettings(core = null) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-settings-"));
@@ -148,4 +148,125 @@ test("a throwing subscriber does not stop the others", () => {
   settings.subscribe((values) => seen.push(values.scheme));
   settings.patch({ scheme: "light" });
   assert.deepEqual(seen, ["light"]);
+});
+
+// --- the schema --------------------------------------------------------------
+//
+// Settings are described in one table and every read and write goes through it.
+// The cases worth pinning are the ones where the old branch-per-key version
+// quietly disagreed with itself: a value invalid on disk but never re-checked, a
+// key the UI sent that nothing handled, and the rotator switch being writable
+// from the settings panel.
+
+test("every setting is described, and every description has a default", () => {
+  const values = tempSettings().all();
+  for (const [key, spec] of Object.entries(SCHEMA)) {
+    assert.ok(spec.type, `${key} needs a type`);
+    assert.ok(key in values, `${key} must be readable`);
+    assert.ok(
+      Object.hasOwn(spec, "default"),
+      `${key} needs a default, or a corrupt file decides it`,
+    );
+  }
+  assert.deepEqual(
+    Object.keys(values).sort(),
+    Object.keys(SCHEMA).sort(),
+    "a setting with no schema entry would never be validated",
+  );
+});
+
+test("a value that is invalid on disk is fixed on read, not only on write", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-settings-"));
+  fs.writeFileSync(
+    path.join(dir, "settings.json"),
+    JSON.stringify({
+      scheme: "ultraviolet",
+      background: "#12345",
+      showSettingsButton: "no",
+      rotatorDetail: 12345,
+      somethingRemoved: "from an older build",
+    }),
+  );
+  const values = new Settings({ userDataPath: dir }).all();
+  assert.equal(values.scheme, "auto");
+  assert.equal(values.background, null);
+  assert.equal(values.showSettingsButton, true, "an unreadable flag falls back to its default");
+  assert.equal(values.rotatorDetail, "");
+  assert.equal(
+    Object.hasOwn(values, "somethingRemoved"),
+    false,
+    "a key no version reads should not outlive the version that wrote it",
+  );
+});
+
+test('"false" as a string means false, not a truthy surprise', () => {
+  // Boolean("false") is true, so the string form used to switch the setting the
+  // wrong way - the one case where the UI and the file would disagree about what
+  // the operator asked for.
+  const settings = tempSettings();
+  settings.patch({ showSettingsButton: true });
+  assert.equal(settings.patch({ showSettingsButton: "false" }).showSettingsButton, false);
+  assert.equal(settings.patch({ restoreSession: "false" }).restoreSession, false);
+  assert.equal(settings.patch({ restoreSession: "true" }).restoreSession, true);
+});
+
+test("an unknown key in a patch is ignored rather than written", () => {
+  const settings = tempSettings();
+  const updated = settings.patch({ notASetting: "value", scheme: "dark" });
+  assert.equal(updated.scheme, "dark", "the real key still applies");
+  assert.equal(Object.hasOwn(updated, "notASetting"), false);
+  assert.equal(
+    Object.hasOwn(JSON.parse(fs.readFileSync(settings.store.file, "utf8")), "notASetting"),
+    false,
+    "and it does not reach the file either",
+  );
+});
+
+test("the settings UI cannot claim the rotator is on", () => {
+  // rotatorEnabled is written only by the rotator service reporting what it
+  // actually did. A patch from a renderer that set it would paint a green "proxy
+  // on" over a browser that is not proxying anything.
+  const settings = tempSettings();
+  settings.setRotatorState({ enabled: false, state: "stopped" });
+  const updated = settings.patch({ rotatorEnabled: true, rotatorState: "running" });
+  assert.equal(updated.rotatorEnabled, false);
+  assert.equal(updated.rotatorState, "stopped");
+
+  // The service path still works, because that is the one that knows.
+  assert.equal(
+    settings.setRotatorState({ enabled: true, state: "running" }).rotatorEnabled,
+    true,
+  );
+});
+
+test("an over-long detail string is truncated rather than stored whole", () => {
+  const settings = tempSettings();
+  const updated = settings.setRotatorState({
+    enabled: true,
+    state: "running",
+    detail: "x".repeat(5000),
+  });
+  assert.equal(updated.rotatorDetail.length, 200);
+});
+
+test("every writable key survives a patch that sets it", () => {
+  // A key added to the schema with no UI control is a dead setting. This at least
+  // makes it a stored, readable one, and fails loudly when the table and the
+  // defaults drift apart.
+  const settings = tempSettings();
+  const sample = {
+    bool: false,
+    enum: "dark",
+    hex: "#0d9488",
+    text: "custom",
+  };
+  for (const [key, spec] of Object.entries(SCHEMA)) {
+    if (spec.writable === false) continue;
+    const value = spec.type === "enum" ? spec.values[spec.values.length - 1] : sample[spec.type];
+    assert.notEqual(
+      settings.patch({ [key]: value })[key],
+      DEFAULTS[key],
+      `${key} did not take the value it was given`,
+    );
+  }
 });

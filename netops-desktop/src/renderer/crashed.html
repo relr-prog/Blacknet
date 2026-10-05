@@ -2,9 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- script-src 'self' is here for crashed.js, which fills in the reason and
+         exit code. Without it this page loads and then does nothing at all: the
+         detail block stays at its placeholders and the operator is told
+         "unknown" for a crash the shell knows the reason for. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'self'; img-src 'self' data:;"
+      content="default-src 'none'; style-src 'self'; img-src 'self' data:; script-src 'self';"
     />
     <title>Tab crashed</title>
     <link rel="icon" href="../../assets/icons/blacknet-32.png" type="image/png" />
@@ -25,7 +29,10 @@
         <dt>Exit code</dt>
         <dd id="code">-</dd>
       </dl>
-      <p class="hint">Reload the tab to try again.</p>
+      <p class="hint">
+        Press Reload in the toolbar, or close this tab. Reload goes back to the
+        page you were on - not to this message.
+      </p>
     </main>
     <script src="crashed.js"></script>
   </body>

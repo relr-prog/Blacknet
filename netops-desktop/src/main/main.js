@@ -15,6 +15,7 @@ const config = require("./config");
 const { createActions } = require("./actions");
 const { Native, native: addon } = require("./native");
 const { TabManager, CHROME_HEIGHT } = require("./tabs");
+const { Session } = require("./session");
 const { Settings } = require("./settings");
 const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
@@ -47,6 +48,7 @@ let reauth = null;
 let passwords = null;
 let watcher = null;
 let rotator = null;
+let sessionStore = null;
 
 // The shape the password manager expects for copying. It used to hang off the
 // Python service, which meant a clipboard write - the one thing a user absolutely
@@ -89,7 +91,7 @@ function captureEnabled() {
   return passwords.status().verified;
 }
 
-function buildFeatureModules(userData, browserConfig, port) {
+function buildFeatureModules(userData, browserConfig) {
   settings = new Settings({ userDataPath: userData, core });
   // The gateway is its own process now, supervised directly by the shell. It is
   // deliberately not routed through the control plane: a browser should not need
@@ -132,7 +134,6 @@ function buildFeatureModules(userData, browserConfig, port) {
   log(`features: vault ${path.join(userData, "vault")}, re-auth ${reauth.method()}`);
   log(`identity: ${profile.name}`);
   void browserConfig;
-  void port;
 }
 
 // A report from a tab's password hook. The payload is untrusted; watcher.handle
@@ -169,7 +170,7 @@ async function createWindow() {
   }
   log(`native ${addon.version} ready, ${core.blocklist.size()} block rules`);
 
-  buildFeatureModules(userData, browserConfig, Number(process.env.NETOPS_PORT || 8787));
+  buildFeatureModules(userData, browserConfig);
 
   win = new BrowserWindow({
     width: 1280,
@@ -200,6 +201,15 @@ async function createWindow() {
     send: sendToChrome,
     rotator,
   });
+  // Written as tabs are created and navigated, and read once here on launch. It is
+  // handed to the tab manager rather than managed here so there is a single place
+  // that knows when a tab comes into being.
+  sessionStore = new Session({
+    userDataPath: userData,
+    log,
+    enabled: settings.get("restoreSession") !== false,
+  });
+  tabs.sessionStore = sessionStore;
   registerIpc();
   attachPasswordHook();
 
@@ -248,7 +258,14 @@ async function createWindow() {
   // to prefetch here: the startup tab simply has no hook until the operator
   // presents a step-up, which is the correct state for a locked vault.
 
-  await tabs.create({ active: true });
+  // Reopening the previous session is tried first, and the blank startup tab is
+  // the fallback. A restore with nothing in it and a restore that could not open
+  // anything both land on the same page, so the operator never gets a blank
+  // frame with no explanation.
+  const restored = tabs.restore();
+  if (!restored.opened) {
+    await tabs.create({ active: true });
+  }
 
   win.on("resize", () => {
     layoutChrome();
@@ -313,6 +330,7 @@ clipboard: clipboardBridge,
       identity,
       passwords,
       rotator,
+      sessionStore,
     }),
     "netops:open-external": async (url) => {
       // Only ever hand http(s) to the OS browser; never file: or a custom
@@ -377,8 +395,9 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// A second instance would fight over the same profile partitions and the same
-// control-plane port, so hand the launch back to the running window.
+// A second instance would fight over the same profile partitions, the same
+// settings file and the same proxy ports, so hand the launch back to the running
+// window.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -422,6 +441,7 @@ if (!app.requestSingleInstanceLock()) {
       await runSmoke({
         handlers: ipcHandlers,
         BrowserWindow,
+        app,
         getViews: () => ({ chrome: chromeView, tab: (id) => tabs.viewFor(id) }),
         quit,
       });

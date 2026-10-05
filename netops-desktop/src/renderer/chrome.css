@@ -102,6 +102,25 @@ body {
   text-align: center;
 }
 
+/* A crashed tab. The tab itself goes quiet so the title is readable, and the
+   marker says what happened rather than leaving the title to change by itself. */
+.tab.crashed .title {
+  opacity: 0.65;
+}
+
+.tab .crashmark {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--warn);
+  color: #1e222a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
 /* The privacy grade. Reads as a warning only when it is low, so a good score is
    shown quietly rather than in the same red as a blocked tracker. */
 .tab .grade {

@@ -130,6 +130,10 @@ class TabManager {
       // The page's tracker count and privacy grade. Lives on the tab because the
       // badge is drawn per tab and reading it must not be an IPC round trip.
       telemetry: this.ledger.glance(tab.id),
+      // A crashed tab is showing the crash page, not the site it was on. The
+      // chrome marks it, because a tab whose title changed by itself is not
+      // something to leave for the operator to work out.
+      crashed: Boolean(tab.crashed),
     };
   }
 
@@ -216,8 +220,9 @@ class TabManager {
       return `url policy: ${error.message}`;
     }
 
-    // The control plane itself is loopback: allow it even though the URL policy
-    // blocks private ranges by default.
+    // Loopback is allowed even though the URL policy blocks private ranges by
+    // default: the proxy gateway the shell supervises lives there, and blocking it
+    // would break the rotator from inside the browser that is using it.
     if (parsed.host === "127.0.0.1" || parsed.host === "localhost" || parsed.host === "::1") {
       return null;
     }
@@ -297,7 +302,50 @@ class TabManager {
     // no preload at all in a page that loads untrusted content.
     const tab = this.#createTab({ profile, active, preload: this.captureEnabled() ? PASSWORD_HOOK : undefined });
     this.navigate(tab.id, url || this.config.newTabUrl);
+    if (this.sessionStore) this.sessionStore.record(this.describe(tab));
     return this.describe(tab);
+  }
+
+  // Reopens the tabs that were open last time.
+  //
+  // The interesting case is the partial one. A single dead entry should not cost
+  // the operator the other nine tabs, and silently returning fewer tabs than
+  // yesterday - with no count and no reason - is how a browser becomes something
+  // people stop trusting. So the skipped ones are counted and logged, and a URL
+  // the current policy refuses is skipped rather than forced through.
+  restore() {
+    if (!this.sessionStore) return { opened: 0, skipped: 0 };
+    const entries = this.sessionStore.all();
+    if (!entries.length) return { opened: 0, skipped: 0 };
+
+    const focus = this.sessionStore.focusSlot();
+    let opened = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      try {
+        const tab = this.create({ profile: entry.profile, url: entry.url, active: false });
+        this.sessionStore.claim(tab.id, entry.slot);
+        opened += 1;
+      } catch (error) {
+        skipped += 1;
+        this.log(`session: could not reopen ${entry.url}: ${error.message}`);
+      }
+    }
+
+    if (opened) {
+      // Focus the tab that was in front last time. A session that cannot say which
+      // one that was still lands somewhere sensible rather than on nothing.
+      const wanted = focus === null
+        ? null
+        : [...this.tabs.values()].find(
+            (tab) => this.sessionStore.restoredSlotFor(tab.id) === focus,
+          );
+      this.activate((wanted && wanted.id) || this.order[0]);
+      this.log(`session: restored ${opened} tab(s)${skipped ? `, skipped ${skipped}` : ""}`);
+    }
+
+    return { opened, skipped };
   }
 
   // Settings and Privacy are local pages of the shell shown in an ordinary tab.
@@ -323,6 +371,10 @@ class TabManager {
       tab = this.#createTab({ active, preload: FULL_PRELOAD, pageTheme: false });
       tab.internalPage = name;
       tab.title = page.title;
+      // Deliberately not recorded in the session. These are the shell's own pages
+      // and they reopen by name, not by file path; storing a file:// URL that only
+      // means something inside this installation would be a session entry that can
+      // never be honoured.
     }
     tab.pendingUrl = path.basename(page.file, ".html");
     if (active) this.activate(tab.id);
@@ -467,18 +519,41 @@ class TabManager {
   // Closing the tab here used to close the last tab, which quit the whole app.
   #recoverFromCrash(tab, details) {
     tab.crashed = true;
+    // Kept before the crash page replaces the document, and used by reload() to
+    // put the operator back where they were.
+    tab.crashedUrl = tab.view.webContents.getURL() || tab.pendingUrl || null;
     tab.title = "Crashed";
     this.#emit("netops:crashed", {
       tabId: tab.id,
       reason: details.reason,
       exitCode: details.exitCode,
+      url: tab.crashedUrl,
     });
-    tab.view.webContents
-      .loadFile(RENDERER_DIR + "/crashed.html", {
-        query: { reason: details.reason, code: String(details.exitCode) },
-      })
-      .catch((error) => this.log(`tab ${tab.id} crash page failed: ${error.message}`));
+    this.#showCrashPage(tab, details);
     this.#broadcast();
+  }
+
+  // A load started in the same tick as the crash is routinely aborted (ERR_ABORTED)
+  // because the old process is still going away. Retried once after a beat rather
+  // than given up on: the alternative is a tab left showing a dead page, which is
+  // indistinguishable from the crash itself and gives the operator nothing.
+  //
+  // The retry checks that the tab is still crashed first. It can arrive after the
+  // operator has already pressed Reload, and putting the crash page back on top of
+  // a page that has just recovered is worse than never showing it.
+  #showCrashPage(tab, details, attempt = 0) {
+    const wc = tab.view.webContents;
+    if (!this.tabs.has(tab.id) || wc.isDestroyed()) return;
+    if (!tab.crashed) return;
+    wc.loadFile(RENDERER_DIR + "/crashed.html", {
+      query: { reason: details.reason, code: String(details.exitCode) },
+    }).catch((error) => {
+      if (attempt === 0 && /ERR_ABORTED|aborted/i.test(error.message || "")) {
+        setTimeout(() => this.#showCrashPage(tab, details, 1), 150);
+        return;
+      }
+      this.log(`tab ${tab.id} crash page failed: ${error.message}`);
+    });
   }
 
   // Permissions are opt-in, not opt-out.
@@ -565,6 +640,10 @@ class TabManager {
 
     const parsed = this.native.resolve(target);
     tab.pendingUrl = parsed.url;
+    // Recorded from the resolved URL, not the typed text: the address bar can hold
+    // half-finished input, and a session file full of typos is a session file that
+    // reopens onto error pages.
+    if (this.sessionStore) this.sessionStore.navigate({ ...this.describe(tab), url: parsed.url });
     tab.view.webContents.loadURL(parsed.url).catch((error) => {
       // Closing a tab tears its view down mid-load; that is not a load failure.
       if (!this.tabs.has(id)) return;
@@ -586,6 +665,20 @@ class TabManager {
   reload(id, hard = false) {
     const tab = this.tabs.get(id || this.activeId);
     if (!tab) return null;
+    // A crashed tab is showing the crash page, so reloading would reload the crash
+    // page - and the operator would be pressing Reload forever. The URL they
+    // actually wanted is kept for exactly this moment.
+    if (tab.crashed) {
+      tab.crashed = false;
+      const back = tab.crashedUrl;
+      tab.crashedUrl = null;
+      if (back) {
+        this.log(`tab ${tab.id} reloading after crash: ${back}`);
+        return this.navigate(tab.id, back);
+      }
+      tab.view.webContents.reloadIgnoringCache(hard);
+      return this.describe(tab);
+    }
     tab.view.webContents.reloadIgnoringCache(hard);
     return this.describe(tab);
   }
@@ -605,6 +698,7 @@ class TabManager {
   activate(id) {
     if (!this.tabs.has(id)) return this.active();
     this.activeId = id;
+    if (this.sessionStore) this.sessionStore.setActive(id);
     this.#layout();
     this.#broadcast();
     return this.active();
@@ -625,6 +719,7 @@ class TabManager {
     this.siteByContents.delete(contentsId);
     this.ledger.reset(id);
     this.tabs.delete(id);
+    if (this.sessionStore) this.sessionStore.forget(id);
     this.order = this.order.filter((candidate) => candidate !== id);
 
     if (this.activeId === id) {

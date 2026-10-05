@@ -61,7 +61,9 @@ contextBridge.exposeInMainWorld("netops", {
   openExternal: (url) => ipcRenderer.invoke("netops:open-external", url),
 
   // --- rotator -------------------------------------------------------------
-  // Admin-only in the control plane; main refuses for guests and operators.
+  // A local action on a child process this shell started. There is no dashboard
+  // role to check, because there is no dashboard: the operator already owns the
+  // machine, and an "administrator" gate here would have protected nothing.
   rotator: {
     status: () => ipcRenderer.invoke("netops:rotator:status"),
     set: (enabled) => ipcRenderer.invoke("netops:rotator:set", Boolean(enabled)),
@@ -74,6 +76,14 @@ contextBridge.exposeInMainWorld("netops", {
     read: () => ipcRenderer.invoke("netops:settings:read"),
     write: (patch) => ipcRenderer.invoke("netops:settings:write", patch),
     cssVariables: () => ipcRenderer.invoke("netops:settings:css-variables"),
+  },
+
+  // --- session ------------------------------------------------------------
+  // The saved tab list. Read is for showing what would be restored; clear is
+  // separate from the restoreSession switch so that turning the feature off is
+  // not the same operation as erasing what it already recorded.
+  session: {
+    clear: () => ipcRenderer.invoke("netops:session:clear"),
   },
 
   // --- account -------------------------------------------------------------

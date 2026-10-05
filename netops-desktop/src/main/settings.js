@@ -16,27 +16,103 @@ const { JsonStore } = require("./store");
 
 const HEX = /^#[0-9a-f]{6}$/;
 
-const DEFAULTS = {
+// One description of every setting: its type, its allowed values, its default and
+// whether the settings UI may write it.
+//
+// This existed as a list of `if ("key" in values)` branches, which is fine right up
+// until it is not. A key that was validated on write but not on read means a
+// hand-edited or half-migrated settings.json paints the UI whatever it says; a key
+// with no branch is silently dropped, so the write appears to work and nothing
+// changes. Reads and writes now go through the same table, which is the only way
+// both of those stay true as keys are added.
+const SCHEMA = {
+  // --- writable by the operator --------------------------------------------
   // "auto" follows prefers-color-scheme; "light" is Opsi B, "dark" is Opsi A.
-  scheme: "auto",
+  scheme: { type: "enum", values: ["auto", "light", "dark"], default: "auto" },
   // Chrome background override. null keeps the palette background.
-  background: null,
+  background: { type: "hex", default: null },
   // Accent used for focus rings, active tab rule, highlights.
-  accent: null,
+  accent: { type: "hex", default: null },
   // Browser (page) surface theme name handed to the C++ theme store.
-  pageTheme: "auto",
-  // Rotator master switch: false means "direct connection", whatever the pool
-  // says. The last known rotator state is remembered for display only.
-  rotatorEnabled: false,
-  rotatorState: "unknown",
-  rotatorDetail: "",
-  rotatorAdminOnly: false,
+  pageTheme: { type: "text", maxLength: 40, default: "auto" },
   // Save-password prompts: ask before storing a detected credential.
-  offerToSavePasswords: true,
+  offerToSavePasswords: { type: "bool", default: true },
   // Show the toolbar gear.
-  showSettingsButton: true,
+  showSettingsButton: { type: "bool", default: true },
+  // Reopen the previous tabs on launch. On by default, like every browser: losing
+  // your tabs on quit is not a privacy feature, it is data loss. It stores URLs
+  // and nothing else (see session.js), and this switch turns it off.
+  restoreSession: { type: "bool", default: true },
+
+  // --- written by the shell, not the operator --------------------------------
+  // Rotator master switch: false means "direct connection", whatever the pool
+  // says. The last known rotator state is remembered for display only. Not
+  // writable: flipping the rotator is an action on the rotator service, not a
+  // preference, and the UI must not be able to claim a proxy is on when it is off.
+  rotatorEnabled: { type: "bool", default: false, writable: false },
+  rotatorState: { type: "text", maxLength: 40, default: "unknown", writable: false },
+  rotatorDetail: { type: "text", maxLength: 200, default: "", writable: false },
+  rotatorAdminOnly: { type: "bool", default: false, writable: false },
 };
 
+const DEFAULTS = Object.fromEntries(
+  Object.entries(SCHEMA).map(([key, spec]) => [key, spec.default]),
+);
+
+const WRITABLE = new Set(
+  Object.entries(SCHEMA)
+    .filter(([, spec]) => spec.writable !== false)
+    .map(([key]) => key),
+);
+
+// --- coercion ----------------------------------------------------------------
+//
+// Every value that leaves this module passes through here, including values read
+// back from disk. A bad value is replaced by the default rather than rejected: the
+// operator did not ask for an invalid colour, and refusing to start the browser
+// over one is a worse answer than falling back to the palette.
+
+function coerce(spec, value) {
+  switch (spec.type) {
+    case "bool":
+      // "false" as a string used to mean true, which is a preference quietly
+      // inverted by whatever wrote it. Both spellings are accepted explicitly
+      // rather than by truthiness.
+      if (typeof value === "boolean") return value;
+      if (value === "true") return true;
+      if (value === "false") return false;
+      return spec.default;
+    case "enum":
+      return spec.values.includes(value) ? value : spec.default;
+    case "hex": {
+      if (value === null || value === "") return null;
+      if (typeof value !== "string") return spec.default;
+      const trimmed = value.trim().toLowerCase();
+      return HEX.test(trimmed) ? trimmed : spec.default;
+    }
+    case "text":
+      if (typeof value !== "string") return spec.default;
+      return value.slice(0, spec.maxLength);
+    default:
+      return spec.default;
+  }
+}
+
+// Normalises a whole settings object. Unknown keys are dropped: nothing in this
+// file is read from the network, but a stray key from an older build should not
+// outlive the version that wrote it.
+function coerceAll(raw) {
+  const out = {};
+  for (const [key, spec] of Object.entries(SCHEMA)) {
+    out[key] = coerce(spec, raw[key]);
+  }
+  return out;
+}
+
+// The standalone helper keeps its own contract - "give me a fallback for anything
+// unusable", including null - because callers use it to fill a colour in. The
+// schema above is the opposite in one respect: null means "no override", which is
+// a value in its own right for these two keys.
 function normaliseHex(value, fallback) {
   if (typeof value !== "string") return fallback;
   const trimmed = value.trim().toLowerCase();
@@ -44,7 +120,7 @@ function normaliseHex(value, fallback) {
 }
 
 function normaliseScheme(value) {
-  return ["auto", "light", "dark"].includes(value) ? value : DEFAULTS.scheme;
+  return coerce(SCHEMA.scheme, value);
 }
 
 class Settings {
@@ -63,13 +139,7 @@ class Settings {
 
   // --- reads ---------------------------------------------------------------
   all() {
-    const raw = this.#store.all();
-    return {
-      ...raw,
-      scheme: normaliseScheme(raw.scheme),
-      background: normaliseHex(raw.background, DEFAULTS.background),
-      accent: normaliseHex(raw.accent, DEFAULTS.accent),
-    };
+    return coerceAll(this.#store.all());
   }
 
   get(key) {
@@ -79,34 +149,17 @@ class Settings {
   // --- writes --------------------------------------------------------------
   // patch() is the only mutator: it validates, persists, applies and notifies, so
   // no caller can leave the UI and the persisted state disagreeing.
+  //
+  // Keys the schema does not know are ignored rather than written, and keys marked
+  // not-writable are ignored even when named. Both cases used to be invisible:
+  // the UI would show a changed value and nothing would happen.
   patch(values) {
-    const next = { ...this.#store.all() };
+    const next = coerceAll(this.#store.all());
 
-    if ("scheme" in values) next.scheme = normaliseScheme(values.scheme);
-    if ("background" in values) {
-      next.background =
-        values.background === null || values.background === ""
-          ? null
-          : normaliseHex(values.background, DEFAULTS.background);
+    for (const key of Object.keys(values || {})) {
+      if (!WRITABLE.has(key)) continue;
+      next[key] = coerce(SCHEMA[key], values[key]);
     }
-    if ("accent" in values) {
-      next.accent =
-        values.accent === null || values.accent === ""
-          ? null
-          : normaliseHex(values.accent, DEFAULTS.accent);
-    }
-    if ("pageTheme" in values && typeof values.pageTheme === "string") {
-      next.pageTheme = values.pageTheme.slice(0, 40);
-    }
-    if ("offerToSavePasswords" in values) {
-      next.offerToSavePasswords = Boolean(values.offerToSavePasswords);
-    }
-    if ("showSettingsButton" in values) {
-      next.showSettingsButton = Boolean(values.showSettingsButton);
-    }
-    // rotatorEnabled is deliberately not settable here: flipping the rotator is
-    // an action on the rotator service, not a preference write. Use
-    // setRotatorState() once the service has confirmed the change.
 
     this.#store.patch(next);
     this.#apply();
@@ -115,12 +168,15 @@ class Settings {
   }
 
   setRotatorState({ enabled, state, detail = "", adminOnly = false }) {
-    this.#store.patch({
-      rotatorEnabled: Boolean(enabled),
-      rotatorState: String(state || "unknown").slice(0, 40),
-      rotatorDetail: String(detail || "").slice(0, 200),
-      rotatorAdminOnly: Boolean(adminOnly),
-    });
+    this.#store.patch(
+      coerceAll({
+        ...this.#store.all(),
+        rotatorEnabled: enabled,
+        rotatorState: state,
+        rotatorDetail: detail,
+        rotatorAdminOnly: adminOnly,
+      }),
+    );
     this.#notify();
     return this.all();
   }
@@ -177,4 +233,4 @@ class Settings {
   }
 }
 
-module.exports = { Settings, DEFAULTS, normaliseHex, normaliseScheme, HEX };
+module.exports = { Settings, SCHEMA, DEFAULTS, normaliseHex, normaliseScheme, coerceAll, HEX };

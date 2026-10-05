@@ -64,7 +64,7 @@ class Native {
   }
 
   shouldBlockRequest(url) {
-    // Never break the app's own chrome or the local control plane.
+    // Never break the app's own pages or the loopback gateway it supervises.
     if (url.startsWith("file://") || url.startsWith("devtools://")) return false;
     return this.blocklist.check(url).blocked;
   }

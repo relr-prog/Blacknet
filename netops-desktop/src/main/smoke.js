@@ -109,6 +109,10 @@ async function pageState(view) {
     // plus a step-up button, Network is a toggle - so "did this section paint
     // anything at all" is the honest question.
     content: document.querySelectorAll('#settings button, #settings input, #settings ul, #settings li, #settings p, #settings .pill, #settings table tr').length,
+    // Scoped to the panel, because "did the privacy half paint anything" is a
+    // different question from the same question about the settings half - and a
+    // wait that watches the wrong half reports ready before anything is there.
+    panelContent: document.querySelectorAll('#panel p, #panel .pill, #panel table tr, #panel button, #panel pre').length,
     pills: document.querySelectorAll('.pill').length,
     tableRows: document.querySelectorAll('table tr').length,
     empty: document.querySelectorAll('.empty').length,
@@ -121,6 +125,30 @@ async function pageState(view) {
       .some((b) => /dashboard/i.test(b.textContent || '')),
     status: document.getElementById('status').textContent,
   }))()`);
+}
+
+// Reads what a crashed tab is actually showing. The crash page is rendered by a
+// script of its own, so its text is the only honest evidence that the page works
+// rather than merely loading.
+async function crashPageText(view) {
+  try {
+    return await view.webContents.executeJavaScript("document.body.innerText");
+  } catch (error) {
+    return `unreadable: ${error.message}`;
+  }
+}
+
+// Reads what a Settings/Privacy tab is actually showing. The page builds itself
+// from IPC replies, so the text is the only honest evidence that a view rendered
+// rather than a hash that changed. Scoped to the active half, because the panel
+// ends with the shell log and a log line can contain any word at all - including
+// whatever the check is looking for.
+async function settingsText(view, selector = "document.body") {
+  try {
+    return await view.webContents.executeJavaScript(`${selector}.innerText`);
+  } catch (error) {
+    return `unreadable: ${error.message}`;
+  }
 }
 
 // Colour-scheme switching is pure CSS (light-dark()), so the only honest way to
@@ -166,7 +194,7 @@ async function schemeCheck(view) {
   return out;
 }
 
-async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
+async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
   const call = async (channel, ...args) => {
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`no handler registered for ${channel}`);
@@ -412,6 +440,74 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
       "report panel renders content",
       reportUi.content > 0,
       `${reportUi.content} element(s)`,
+    );
+
+    // The egress view, with the gateway stopped - which is the state the smoke
+    // runs in. The claim being tested is that it says so: "0 upstreams" and "not
+    // configured" are different statements, and neither is "your traffic is
+    // rotating".
+    await pageView.webContents.executeJavaScript(
+      `document.querySelector('#panel nav button[data-view="service"]').click()`,
+    );
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const state = await pageState(pageView);
+      if (state.view === "service" && state.panelContent > 0) break;
+      await sleep(250);
+    }
+    const serviceUi = await pageState(pageView);
+    const serviceText = await settingsText(
+      pageView,
+      "document.getElementById('panel')",
+    );
+    check(
+      "the egress view renders and admits the gateway is not running",
+      serviceUi.view === "service"
+        && serviceUi.panelContent > 0
+        && /not running|no healthy|not identified|unknown|stopped/i.test(serviceText),
+      serviceText.replace(/\s+/g, " ").slice(0, 80),
+    );
+    check(
+      "no exit IP is shown while the gateway is down",
+      !/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(
+        serviceText.replace(/127\.0\.0\.1|0\.0\.0\.0/g, ""),
+      ),
+      "and no rotation claim is made",
+    );
+
+    // Now the same view with the gateway actually running. The pool ships with
+    // documentation addresses, so nothing behind it can be healthy - which makes
+    // this the honest case to test: a listening gateway with no working upstreams
+    // must not read as a working proxy.
+    const started = await call("netops:rotator:set", true);
+    let gateway = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      gateway = await call("netops:rotator:status");
+      if (gateway && gateway.live) break;
+      await sleep(400);
+    }
+    if (started && gateway && gateway.live) {
+      await call("netops:tabs:internal", "settings", { view: "service" });
+      await sleep(1200);
+      const runningText = await settingsText(
+        pageView,
+        "document.getElementById('panel')",
+      );
+      check(
+        "a running gateway with no healthy upstreams does not claim rotation",
+        /No healthy upstreams|Exit IPs not identified/i.test(runningText)
+          && !/Rotating across/i.test(runningText),
+        runningText.replace(/\s+/g, " ").slice(0, 90),
+      );
+    } else {
+      check(
+        "the gateway starts",
+        false,
+        `state ${gateway && gateway.rotatorState}, detail ${gateway && gateway.rotatorDetail}`,
+      );
+    }
+    await call("netops:rotator:set", false);
+    await pageView.webContents.executeJavaScript(
+      `document.querySelector('#panel nav button[data-view="report"]').click()`,
     );
 
     // The other privacy panels still have to be reachable behind it.
@@ -740,6 +836,83 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     await setColorScheme(chromeView, null);
 
     check("tab close", (await call("netops:tabs:close", created.id)).length === 1);
+
+    // Session restore, checked against the file the next launch will read. This
+    // is the whole feature: the tabs you had open are the tabs you get back.
+    // A crash mid-write is the interesting failure, which is why this reads the
+    // real file rather than an in-memory snapshot.
+    // Session restore, checked against the file the next launch will read - which is
+    // the whole feature. A tab on a reserved TLD is used on purpose: it is
+    // recorded without resolving anything, and about:blank or a data: URL would
+    // not be recorded at all, because neither is a page worth reopening.
+    const restorable = await call("netops:tabs:create", {
+      url: "https://blacknet-smoke.invalid/",
+    });
+    const sessionFile = path.join(app.getPath("userData"), "session.json");
+    const savedRaw = fs.readFileSync(sessionFile, "utf8");
+    const saved = JSON.parse(savedRaw);
+    const urls = Array.isArray(saved.tabs) ? saved.tabs.map((entry) => entry.url) : [];
+    check(
+      "the open tabs were written for the next launch",
+      urls.includes("https://blacknet-smoke.invalid/"),
+      `${urls.length} tab(s) saved`,
+    );
+    check(
+      "nothing but URLs and profiles is saved",
+      !savedRaw.includes("cookies")
+        && !savedRaw.includes("tracker")
+        && Object.keys(saved.tabs[0] || {}).every((key) => ["slot", "url", "profile"].includes(key)),
+      "no page content in the session file",
+    );
+    check(
+      "forgetting the saved session clears the file",
+      (await call("netops:session:clear")).cleared === true
+        && JSON.parse(fs.readFileSync(sessionFile, "utf8")).tabs.length === 0,
+    );
+    await call("netops:tabs:close", restorable.id);
+
+    // A crashed tab must not look normal, and reloading it must go back to the
+    // page rather than reloading the crash page - the loop the operator cannot
+    // get out of.
+    const crashedTab = await call("netops:tabs:create");
+    getViews()
+      .tab(crashedTab.id)
+      .webContents.forcefullyCrashRenderer();
+    await sleep(800);
+    const crashedEntry = (await call("netops:tabs:list")).find(
+      (tab) => tab.id === crashedTab.id,
+    );
+    check(
+      "a crashed tab is marked as crashed rather than left looking normal",
+      Boolean(crashedEntry && crashedEntry.crashed),
+      crashedEntry ? `crashed=${crashedEntry.crashed}` : "tab gone",
+    );
+    await call("netops:tabs:reload", crashedTab.id);
+    await sleep(800);
+    const afterReload = (await call("netops:tabs:list")).find(
+      (tab) => tab.id === crashedTab.id,
+    );
+    check(
+      "reloading a crashed tab returns to the page, not the crash page",
+      Boolean(afterReload)
+        && afterReload.crashed === false
+        && !String(afterReload.url).includes("crashed.html"),
+      afterReload ? `url ${String(afterReload.url).slice(0, 70)}` : "tab gone",
+    );
+    // The crash page must actually render its own detail. Its Content-Security-Policy
+    // once forbade scripts, so the page loaded and then silently showed
+    // "unknown" for a crash the shell knew the reason for.
+    const crashProbe = await call("netops:tabs:create");
+    getViews()
+      .tab(crashProbe.id)
+      .webContents.forcefullyCrashRenderer();
+    await sleep(900);
+    const crashDetail = await crashPageText(getViews().tab(crashProbe.id));
+    check(
+      "the crash page shows the reason and exit code",
+      /crashed/.test(crashDetail) && /11/.test(crashDetail),
+      crashDetail.replace(/\s+/g, " ").slice(0, 90),
+    );
 
     const failed = checks.filter((entry) => !entry.passed);
     log(`${checks.length - failed.length}/${checks.length} checks passed`);

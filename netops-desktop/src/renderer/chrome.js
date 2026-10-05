@@ -52,8 +52,20 @@ function renderTabs() {
   for (const tab of state.tabs) {
     const element = document.createElement("div");
     element.className = tab.id === state.activeId ? "tab active" : "tab";
+    if (tab.crashed) element.classList.add("crashed");
     element.setAttribute("role", "tab");
     element.title = tab.url;
+
+    if (tab.crashed) {
+      // A renderer crash replaces the page with an explanation and leaves the tab
+      // exactly where it was. Marking it here means the operator is told in the
+      // tab strip rather than only on a page they have to switch to.
+      const mark = document.createElement("span");
+      mark.className = "crashmark";
+      mark.textContent = "!";
+      mark.title = "This tab crashed. Reload to try the page again.";
+      element.append(mark);
+    }
 
     if (tab.loading) {
       const spinner = document.createElement("span");
