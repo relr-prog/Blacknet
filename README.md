@@ -116,7 +116,7 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check + ctest (40) + node:test (223)
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (223)
 npm run smoke                  # real Electron window, headless, 88 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
@@ -128,6 +128,12 @@ cd ../proxy-rotator
 display. `npm run smoke` is the one that exercises a real window, a real
 `WebContentsView`, a real preload contract and the C++ policy, including a forced
 renderer crash.
+
+`tools/check_contrast.py` audits both palettes *and* every stylesheet in
+`src/renderer` that defines its own `:root` tokens, in each scheme it declares.
+A stylesheet that inlines its colours instead of importing `palette.css` is
+therefore held to the same WCAG targets, and it self-tests on every run so a
+parsing change cannot turn the audit into a silent pass.
 
 ## Runtime files
 

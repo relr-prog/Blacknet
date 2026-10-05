@@ -1,15 +1,48 @@
-@import "palette.css";
+/* New tab page. Tidak ada script di sini: halaman ini dimuat di view yang juga
+   memuat halaman tak tepercaya, jadi tidak boleh bergantung pada script.
 
-/* New tab page. No script runs here on purpose: it is loaded into a view that
-   also loads untrusted pages, so it must not need one. Colours come from
-   palette.css, so this page follows the OS light/dark preference too. */
+   Warna didefinisikan di file ini sendiri (tidak lagi dari palette.css) supaya
+   teks dan latar kartu SELALU satu pasangan. Gelap = bawaan, terang mengikuti
+   preferensi OS. */
+
+:root {
+  color-scheme: dark light; /* scrollbar dan kontrol bawaan ikut tema */
+
+  --bg: #1e2129;
+  --surface: #272c37;
+  --raised: #333a48;
+  --line: #3a4150;
+  /* Batas kontrol (border code/kbd). Wajib >= 3:1 di --bg, --surface DAN
+     --raised: yang paling terang adalah --raised, jadi itu yang mengikat. */
+  --line-strong: #8290a9; /* 4.99 / 4.34 / 3.54 :1 */
+  --text: #eceef3;
+  --muted: #a8b0c0; /* kontras ~7:1 di atas --bg, ~5.8:1 di atas --surface */
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f5f8;
+    --surface: #ffffff;
+    --raised: #eceef3;
+    --line: #d9dce4;
+    --line-strong: #737c94; /* 3.82 / 4.17 / 3.59 :1 */
+    --text: #1b1f2a;
+    --muted: #566074; /* kontras ~6.3:1 di atas --surface */
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box; /* mencegah scroll palsu: min-height 100vh + padding */
+}
 
 body {
   display: grid;
   place-items: center;
   min-height: 100vh;
   margin: 0;
-  padding: 32px;
+  padding: 24px 32px;
   color: var(--text);
   background: var(--bg);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -21,9 +54,9 @@ main {
 
 .logo {
   display: block;
-  width: 96px;
-  height: 96px;
-  margin: 0 auto 1rem;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.75rem;
   -webkit-user-drag: none;
   user-select: none;
 }
@@ -36,7 +69,7 @@ h1 {
 }
 
 .lead {
-  margin: 0 auto 2rem;
+  margin: 0 auto 1.5rem;
   max-width: 32rem;
   text-align: center;
   color: var(--muted);
@@ -44,7 +77,7 @@ h1 {
 }
 
 section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 h2 {
@@ -73,6 +106,7 @@ dt {
 
 dd {
   margin: 0;
+  color: var(--text); /* eksplisit, tidak lagi warisan yang bisa salah pasangan */
   font-family: ui-monospace, "Cascadia Mono", monospace;
 }
 
@@ -101,16 +135,8 @@ kbd {
 }
 
 .hint {
-  margin: 1.75rem 0 0;
+  margin: 1.25rem 0 0;
   text-align: center;
   font-size: 0.85rem;
   color: var(--muted);
-}
-
-@media (prefers-color-scheme: light) {
-  /* Warm off-white scheme: nothing to override, tokens already resolve, but the
-     explicit rule documents that the page is intentionally scheme-driven. */
-  body {
-    color-scheme: light;
-  }
 }
