@@ -737,7 +737,11 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     );
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const current = await pageState(pageView);
-      if (current.section === "account") break;
+      // Both conditions, not just the section: the step-up button is painted
+      // after the vault status reply comes back, so stopping on the active
+      // section alone read the DOM before the button existed. That raced, and
+      // reported "unlock button false" on a page that was about to be correct.
+      if (current.section === "account" && current.unlockButton === true) break;
       await sleep(250);
     }
     const accountUi = await pageState(pageView);
@@ -929,6 +933,59 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
         !/\bunknown\b/.test(crashDetail),
       `recorded ${recordedReason}/${recordedCode}, page shows ${crashDetail.replace(/\s+/g, " ").slice(0, 70)}`,
     );
+
+    // Maximizing must carry the chrome and the page with it. Electron emits
+    // "resize" before the new content size is committed, so a synchronous layout
+    // handler used the pre-maximize width and left the tab strip short of the
+    // window edge. Nothing checked this before: the chrome view's bounds are
+    // compared against the window's real content size in both directions.
+    if (win.isMaximizable()) {
+      // describe() carries no active flag and there is no IPC for it, so the
+      // active tab is identified the way the layout itself expresses it: the
+      // one view that has been given a width.
+      const openTabs = await call("netops:tabs:list");
+      const activeTabId =
+        openTabs.find((tab) => (getViews().tab(tab.id)?.getBounds().width || 0) > 0)?.id ??
+        openTabs[0]?.id;
+      const measure = async () => {
+        // Give the deferred layout its tick plus the follow-up pass.
+        await sleep(400);
+        const [contentWidth, contentHeight] = win.getContentSize();
+        const chrome = getViews().chrome.getBounds();
+        const tabView = activeTabId ? getViews().tab(activeTabId) : null;
+        const tabBounds = tabView ? tabView.getBounds() : null;
+        return { contentWidth, contentHeight, chrome, tabBounds };
+      };
+
+      win.maximize();
+      const maximized = await measure();
+      check(
+        "maximizing resizes the top bar to the window",
+        maximized.chrome.width === maximized.contentWidth && maximized.contentWidth > 0,
+        `chrome ${maximized.chrome.width} vs content ${maximized.contentWidth}`,
+      );
+      check(
+        "maximizing resizes the page below the top bar",
+        Boolean(maximized.tabBounds) &&
+          maximized.tabBounds.width === maximized.contentWidth &&
+          maximized.tabBounds.height === Math.max(0, maximized.contentHeight - maximized.chrome.height),
+        maximized.tabBounds
+          ? `page ${maximized.tabBounds.width}x${maximized.tabBounds.height}, chrome height ${maximized.chrome.height}`
+          : "no active tab view",
+      );
+
+      win.unmaximize();
+      const restored = await measure();
+      check(
+        "unmaximizing shrinks the top bar back",
+        restored.chrome.width === restored.contentWidth,
+        `chrome ${restored.chrome.width} vs content ${restored.contentWidth}`,
+      );
+
+      // Put the window back the way the rest of the suite expects it.
+      win.setSize(1280, 860);
+      await sleep(400);
+    }
 
     const failed = checks.filter((entry) => !entry.passed);
     log(`${checks.length - failed.length}/${checks.length} checks passed`);

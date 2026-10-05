@@ -772,6 +772,9 @@ class TabManager {
   }
 
   #layout() {
+    // The layout pass is deferred, so the window can be gone by the time it
+    // runs; getContentSize() on a destroyed window throws.
+    if (!this.window || this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
     for (const id of this.order) {
       const tab = this.tabs.get(id);

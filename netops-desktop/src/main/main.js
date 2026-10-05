@@ -274,18 +274,51 @@ async function createWindow() {
     await tabs.create({ active: true });
   }
 
-  win.on("resize", () => {
-    layoutChrome();
-    tabs.resize();
-  });
+  // Electron emits "resize" before the new content size is committed: read
+  // inside the handler, getContentSize() still returns the *old* width. Laying
+  // out synchronously therefore leaves the chrome at the pre-resize size, and
+  // maximizing visibly stops the tab strip short of the window edge. Every
+  // event that can change the geometry funnels through one coalesged layout
+  // that runs after the new size has landed.
+  for (const event of [
+    "resize",
+    "maximize",
+    "unmaximize",
+    "restore",
+    "enter-full-screen",
+    "leave-full-screen",
+    "enter-html-full-screen",
+    "leave-html-full-screen",
+  ]) {
+    win.on(event, scheduleLayout);
+  }
 
   win.on("closed", () => {
     win = null;
   });
 }
 
+let layoutQueued = false;
+function scheduleLayout() {
+  if (layoutQueued) return;
+  layoutQueued = true;
+  setTimeout(() => {
+    layoutQueued = false;
+    layoutNow();
+    // A window manager that animates the resize commits geometry across frames,
+    // so one follow-up pass settles it without sleeping on a fixed delay.
+    setTimeout(layoutNow, 60);
+  }, 0);
+}
+
+function layoutNow() {
+  if (!win || win.isDestroyed()) return;
+  layoutChrome();
+  if (tabs) tabs.resize();
+}
+
 function layoutChrome() {
-  if (!chromeView || !win) return;
+  if (!chromeView || !win || win.isDestroyed()) return;
   const [width] = win.getContentSize();
   chromeView.setBounds({ x: 0, y: 0, width, height: CHROME_HEIGHT });
 }
