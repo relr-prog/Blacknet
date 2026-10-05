@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 DARK = {
@@ -234,6 +235,35 @@ def audit_css(path: Path) -> list[str]:
     return failures
 
 
+def audit_palette_sync(path: Path, canonical: dict[str, dict[str, str]]) -> list[str]:
+    """A stylesheet with its own :root tokens must not drift from palette.css.
+
+    newtab.css inlines the palette instead of importing it, which is what keeps
+    the page exportable on its own. The cost is that nothing re-syncs it, so
+    this compares every local token against the canonical one and fails on any
+    difference: a stale copy shows up here rather than as a seam between the
+    toolbar and the page.
+    """
+    schemes = css_schemes(path.read_text(encoding="utf-8"))
+    if not schemes:
+        return []
+    failures: list[str] = []
+    for scheme, tokens in sorted(schemes.items()):
+        reference = canonical.get(scheme)
+        if reference is None:
+            continue
+        for name, value in sorted(tokens.items()):
+            if name not in reference:
+                failures.append(
+                    f"{path.name} [{scheme}]: --{name} = {value} is not in palette.css")
+            elif value != reference[name]:
+                failures.append(
+                    f"{path.name} [{scheme}]: --{name} = {value} drifts from palette.css "
+                    f"{reference[name]} (luminance ratio {ratio(value, reference[name]):.2f}:1)"
+                    f" - copy the value across or import palette.css instead")
+    return failures
+
+
 def self_test() -> list[str]:
     """Prove the CSS audit actually fires before trusting a clean run.
 
@@ -272,6 +302,29 @@ def self_test() -> list[str]:
             problems.append(f"self-test: {want} scheme has no tokens")
     if schemes.get("dark", {}).get("bg") == schemes.get("light", {}).get("bg"):
         problems.append("self-test: both schemes resolved to the same tokens")
+
+    # The sync guard has to actually notice a drifted copy.
+    canonical = {"dark": {"bg": "#1e2129"}, "light": {"bg": "#f4f5f8"}}
+    with tempfile.TemporaryDirectory() as tmp:
+        in_sync = Path(tmp) / "in-sync.css"
+        in_sync.write_text(
+            ":root { color-scheme: dark light; --bg: #1e2129; }"
+            "@media (prefers-color-scheme: light) { :root { --bg: #f4f5f8; } }",
+            encoding="utf-8")
+        drifted = Path(tmp) / "drifted.css"
+        drifted.write_text(
+            ":root { color-scheme: dark light; --bg: #1e2129; }"
+            "@media (prefers-color-scheme: light) { :root { --bg: #ffffff; } }",
+            encoding="utf-8")
+        no_tokens = Path(tmp) / "imports.css"
+        no_tokens.write_text('@import "palette.css";\nbody { color: var(--text); }',
+                             encoding="utf-8")
+        if audit_palette_sync(in_sync, canonical):
+            problems.append("self-test: an in-sync stylesheet was reported as drifting")
+        if not audit_palette_sync(drifted, canonical):
+            problems.append("self-test: a drifted token was NOT reported")
+        if audit_palette_sync(no_tokens, canonical):
+            problems.append("self-test: sync reported drift for a file with no local tokens")
     return problems
 
 
@@ -323,8 +376,15 @@ def main() -> int:
     print("  [ok  ] compliant stylesheets pass, failing ones are caught")
 
     failures = audit(DARK) + audit(LIGHT)
+    canonical = css_schemes((RENDERER / "palette.css").read_text(encoding="utf-8"))
     for path in sorted(RENDERER.glob("*.css")):
         failures += audit_css(path)
+        sync = audit_palette_sync(path, canonical)
+        if sync:
+            print(f"\n{path.name}: palette copy is out of sync with palette.css")
+            for line in sync:
+                print(f"  [FAIL] {line}")
+            failures += sync
     print()
     if failures:
         print("contrast budget violated:")

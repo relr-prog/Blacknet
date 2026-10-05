@@ -1,33 +1,37 @@
 /* New tab page. Tidak ada script di sini: halaman ini dimuat di view yang juga
    memuat halaman tak tepercaya, jadi tidak boleh bergantung pada script.
 
-   Warna didefinisikan di file ini sendiri (tidak lagi dari palette.css) supaya
-   teks dan latar kartu SELALU satu pasangan. Gelap = bawaan, terang mengikuti
-   preferensi OS. */
+   Warna didefinisikan di file ini sendiri, bukan di @import palette.css, supaya
+   halaman ini tetap mandiri saat diekspor sendirian. Nilainya disalin PERSIS dari
+   palette.css supaya toolbar dan halaman ini tidak berbeda warna dan tidak ada
+   garis batas di antara keduanya: color-scheme, urutan terang-gelap, dan semua
+   token sama. Kalau palette.css berubah, salinan di sini harus ikut diubah.
+
+   Terang = bawaan, gelap mengikuti preferensi OS (sama seperti palette.css). */
 
 :root {
-  color-scheme: dark light; /* scrollbar dan kontrol bawaan ikut tema */
+  color-scheme: light dark; /* scrollbar dan kontrol bawaan ikut tema */
 
-  --bg: #1e2129;
-  --surface: #272c37;
-  --raised: #333a48;
-  --line: #3a4150;
+  --bg: #f4f5f7;
+  --surface: #e5e7eb;
+  --raised: #fafbfc;
+  --line: #d3d7de;
   /* Batas kontrol (border code/kbd). Wajib >= 3:1 di --bg, --surface DAN
      --raised: yang paling terang adalah --raised, jadi itu yang mengikat. */
-  --line-strong: #8290a9; /* 4.99 / 4.34 / 3.54 :1 */
-  --text: #eceef3;
-  --muted: #a8b0c0; /* kontras ~7:1 di atas --bg, ~5.8:1 di atas --surface */
+  --line-strong: #6b7280; /* 4.43 / 3.90 / 4.67 :1 */
+  --text: #1f2937;
+  --muted: #566173; /* kontras 5.74:1 di --bg, 5.06:1 di --surface */
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f4f5f8;
-    --surface: #ffffff;
-    --raised: #eceef3;
-    --line: #d9dce4;
-    --line-strong: #737c94; /* 3.82 / 4.17 / 3.59 :1 */
-    --text: #1b1f2a;
-    --muted: #566074; /* kontras ~6.3:1 di atas --surface */
+    --bg: #1e222a;
+    --surface: #252b35;
+    --raised: #2b323d;
+    --line: #3a4250;
+    --line-strong: #727e96; /* 3.90 / 3.48 / 3.16 :1 */
+    --text: #e1e4ea;
+    --muted: #a9b2c0; /* kontras 7.45:1 di --bg, 6.65:1 di --surface */
   }
 }
 
