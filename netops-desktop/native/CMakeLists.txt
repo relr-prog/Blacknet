@@ -30,26 +30,38 @@ endif()
 
 # ---------------------------------------------------------------- node addon
 if(NETOPS_BUILD_ADDON)
-  # Resolve node-addon-api and the Node headers straight from disk: shelling out
-  # to npm inside CMake is unreliable, and node_modules/ is right here anyway.
+  # Electron's npm package ships the binary but not its headers - those live on a
+  # separate CDN that node-gyp fetches on demand - so the addon is compiled
+  # against whatever node headers this machine has. That is deliberate, and it is
+  # only safe because this is an N-API addon (node-addon-api): its ABI is
+  # versioned independently of Node and Electron and resolved when Electron loads
+  # the .node file. A V8/NAN addon would need the matching Electron headers right
+  # here, and would stop loading after an Electron upgrade.
+  #
+  # Hence the plain if(EXISTS) walk instead of find_path: find_path caches its
+  # answer in CMakeCache.txt, so after an Electron bump the cached directory kept
+  # winning and a rebuild quietly compiled against the previous headers without
+  # saying so. CMakeCache.txt is not tracked, so this does not clean old entries
+  # for anyone who already has a build directory; the normal variables below
+  # shadow them.
   set(NODE_MODULES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../node_modules"
       CACHE PATH "node_modules directory to build the addon against")
 
-  find_path(NODE_ADDON_API_INCLUDE_DIR
-    NAMES napi.h
-    PATHS "${NODE_MODULES_ROOT}/node-addon-api"
-    NO_DEFAULT_PATH
-  )
+  set(NODE_ADDON_API_INCLUDE_DIR "")
+  if(EXISTS "${NODE_MODULES_ROOT}/node-addon-api/napi.h")
+    set(NODE_ADDON_API_INCLUDE_DIR "${NODE_MODULES_ROOT}/node-addon-api")
+  endif()
 
-  find_path(NODE_API_INCLUDE_DIR
-    NAMES node_api.h
-    PATHS
-      "${NODE_MODULES_ROOT}/node-addon-api/../../electron/dist/include/node"
+  set(NODE_API_INCLUDE_DIR "")
+  foreach(candidate IN ITEMS
+      "${NODE_MODULES_ROOT}/electron/dist/include/node"
       "${NODE_MODULES_ROOT}/node/include/node"
       "/usr/include/node"
-      "/usr/local/include/node"
-    NO_DEFAULT_PATH
-  )
+      "/usr/local/include/node")
+    if(NOT NODE_API_INCLUDE_DIR AND EXISTS "${candidate}/node_api.h")
+      set(NODE_API_INCLUDE_DIR "${candidate}")
+    endif()
+  endforeach()
 
   if(NOT NODE_ADDON_API_INCLUDE_DIR OR NOT NODE_API_INCLUDE_DIR)
     message(WARNING
@@ -59,9 +71,15 @@ if(NETOPS_BUILD_ADDON)
       "build the C++ core and tests only.")
   else()
     message(STATUS "node-addon-api: ${NODE_ADDON_API_INCLUDE_DIR}")
-    message(STATUS "node headers: ${NODE_API_INCLUDE_DIR}")
+    message(STATUS "node headers: ${NODE_API_INCLUDE_DIR} (N-API, so this does not have to match Electron's Node)")
 
-    find_library(NODE_LIBRARY NAMES node)
+    # No find_library(NAMES node) here, deliberately. A distro libnode.so (Node
+    # 20, V8 12.4) links its own copy of V8 into the addon, and Electron carries
+    # its own (V8 15.2). Two V8s in one process: loading the addon SIGSEGVs before
+    # main() runs, on every platform, with no error message - it just looks like
+    # Electron is broken. N-API symbols are resolved from whatever process loads
+    # the .node, which is the whole point of the stable ABI, so linking is not
+    # just unnecessary here, it is what breaks it.
     add_library(netops_node MODULE src/bindings.cpp)
     target_include_directories(netops_node PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -69,9 +87,6 @@ if(NETOPS_BUILD_ADDON)
       ${NODE_API_INCLUDE_DIR}
     )
     target_link_libraries(netops_node PRIVATE netops_core)
-    if(NODE_LIBRARY)
-      target_link_libraries(netops_node PRIVATE ${NODE_LIBRARY})
-    endif()
     set_target_properties(netops_node PROPERTIES
       PREFIX ""
       # Node's require() looks for the .node suffix, not the platform's .so

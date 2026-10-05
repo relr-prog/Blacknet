@@ -5,7 +5,8 @@
   "description": "BlackNet desktop browser: Electron shell, C++ native engine, Python control plane",
   "main": "src/main/main.js",
   "scripts": {
-    "configure:native": "cmake -S native -B build -DCMAKE_BUILD_TYPE=Release",
+    "install:electron": "node node_modules/electron/install.js",
+    "configure:native": "npm run install:electron && cmake -S native -B build -DCMAKE_BUILD_TYPE=Release",
     "build:native": "cmake --build build --parallel",
     "rebuild:native": "npm run configure:native && npm run build:native",
     "test:core": "ctest --test-dir build --output-on-failure",
@@ -18,7 +19,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "electron": "^32.2.0",
+    "electron": "^44.5.1",
     "node-addon-api": "^8.3.0",
     "node-gyp": "^11.0.0"
   }

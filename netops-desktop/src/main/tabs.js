@@ -134,6 +134,11 @@ class TabManager {
       // chrome marks it, because a tab whose title changed by itself is not
       // something to leave for the operator to work out.
       crashed: Boolean(tab.crashed),
+      // The reason and exit code Chromium reported, kept so the crash page and
+      // any check on it show what actually happened instead of "unknown". These
+      // are read-only diagnostics: no renderer can set them.
+      crashReason: tab.crashReason || null,
+      crashExitCode: tab.crashExitCode ?? null,
     };
   }
 
@@ -359,10 +364,12 @@ class TabManager {
     const hash = typeof view === "string" && view ? view.replace(/^#/, "") : "";
 
     let tab = null;
+    let reused = false;
     for (const id of this.order) {
       const existing = this.tabs.get(id);
       if (existing && existing.internalPage === name) {
         tab = existing;
+        reused = true;
         break;
       }
     }
@@ -385,6 +392,33 @@ class TabManager {
       if (!this.tabs.has(tab.id)) return;
       this.log(`tab ${tab.id} internal page failed: ${error.message}`);
     });
+
+    // Reusing a tab needs an explicit reload. loadFile() to the URL and hash the
+    // tab is already showing is a same-document navigation: the page keeps its
+    // DOM, its script never re-runs, and it goes on displaying whatever it read
+    // last time. That is how a Settings tab opened before the proxy started goes
+    // on reading "Service stopped" once it is running. Chromium 32 reloaded here
+    // anyway; Chromium 152 (Electron 44) honours the standard and does not, so
+    // this is a real behaviour change rather than a test artefact.
+    if (reused) {
+      // webContents.reload() returns void, not a promise: chaining .catch() on it
+      // throws a TypeError that looks like an IPC failure. Waiting for
+      // did-finish-load keeps the promise this method returns honest - a caller
+      // that awaits openInternalPage gets a page that has finished rendering,
+      // not one mid-reload with an empty panel.
+      const wc = tab.view.webContents;
+      if (!wc.isDestroyed()) {
+        const settled = new Promise((resolve) => {
+          const timer = setTimeout(resolve, 5000);
+          wc.once("did-finish-load", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        wc.reload();
+        await settled;
+      }
+    }
     return this.describe(tab);
   }
 
@@ -522,6 +556,10 @@ class TabManager {
     // Kept before the crash page replaces the document, and used by reload() to
     // put the operator back where they were.
     tab.crashedUrl = tab.view.webContents.getURL() || tab.pendingUrl || null;
+    // Recorded on the tab so describe() can report what Chromium said, rather
+    // than the page having to be scraped to find out.
+    tab.crashReason = details.reason || "crashed";
+    tab.crashExitCode = details.exitCode ?? null;
     tab.title = "Crashed";
     this.#emit("netops:crashed", {
       tabId: tab.id,
@@ -672,6 +710,8 @@ class TabManager {
       tab.crashed = false;
       const back = tab.crashedUrl;
       tab.crashedUrl = null;
+      tab.crashReason = null;
+      tab.crashExitCode = null;
       if (back) {
         this.log(`tab ${tab.id} reloading after crash: ${back}`);
         return this.navigate(tab.id, back);

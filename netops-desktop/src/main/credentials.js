@@ -261,9 +261,13 @@ class PasswordManager {
   // Copy and reveal are the same operation as far as the vault is concerned; the
   // difference is that copy never returns the secret to the renderer. The
   // clipboard write happens in the main process.
+  //
+  // The write is awaited, not fired and forgotten: Electron 44's clipboard is
+  // asynchronous, so reporting copied: true before the promise settles would
+  // report a copy the clipboard may never have received.
   async copy(id, { method, password, clipboard } = {}) {
     const record = await this.reveal(id, { method, password });
-    if (clipboard) clipboard.writeText(record.password);
+    if (clipboard) await clipboard.writeText(record.password);
     return { copied: true, origin: record.origin, username: record.username, verifiedWith: record.verifiedWith };
   }
 

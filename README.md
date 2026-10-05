@@ -5,7 +5,7 @@ that needs an OS key rather than an account.
 
 | Path | What it is | Runtime |
 | --- | --- | --- |
-| `netops-desktop/` | The browser. Tabs, chrome, settings, vault, telemetry, and supervision of the proxy gateway | Node 20 / Electron + a C++20 policy addon |
+| `netops-desktop/` | The browser. Tabs, chrome, settings, vault, telemetry, and supervision of the proxy gateway | Electron 44 (Chromium 152) + a C++20 N-API policy addon |
 | `proxy-rotator/` | The rotating upstream proxy the browser can route through | Python 3.11+ |
 | `netops/` | **Retired.** The old Python control plane. Nothing in the desktop shell reads it | Unused |
 
@@ -94,9 +94,22 @@ pool of healthy upstreams that all resolve to one address is reported as
 ## Requirements
 
 - Debian/Ubuntu with `python3.13` and `libpulse0` (audio), WSLg on Windows
-- Node 20, Electron
+- Node 20 or newer for the tests; the shell itself brings its own runtime
+- Electron 44 (Chromium 152, Node 24). Supported Electron lines only — a browser
+  that loads arbitrary sites is exactly where an unpatched Chromium matters.
 - A C++20 toolchain for the native addon (CMake)
 - `python3.13` for the rotator if you use it
+
+`npm install` does not download the Electron binary any more: since Electron 42
+that happens in a `postinstall` script, which npm's supply-chain rules have
+removed. The first `npm start`, `npm test` or `npm run smoke` fetches it, and
+`npm run rebuild:native` fetches it first because the build wants the version on
+disk to be the one being built against.
+
+The addon is N-API, so it does not have to match Electron's Node. It is compiled
+against the system `node` headers and resolves the ABI from whichever process
+loads it. It must **not** link `libnode`: two V8s in one process segfault the
+shell on startup, before any of our code runs.
 
 ## Development
 
@@ -104,7 +117,7 @@ pool of healthy upstreams that all resolve to one address is reported as
 cd netops-desktop
 npm install
 npm test                       # contrast check + ctest (40) + node:test (223)
-npm run smoke                  # real Electron window, headless, 85 checks
+npm run smoke                  # real Electron window, headless, 88 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

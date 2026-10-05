@@ -907,11 +907,27 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       .tab(crashProbe.id)
       .webContents.forcefullyCrashRenderer();
     await sleep(900);
+    // Read the reason and exit code the shell actually recorded, and require the
+    // page to show those exact values. An earlier version of this check asserted
+    // the literal 11, which was the exit code Electron 32's Chromium happened to
+    // produce for a forced crash; Chromium 152 reports 5 for the same call, so
+    // the check was really testing a number from a dependency rather than the
+    // page. Comparing against the shell's own record keeps it honest across
+    // upgrades and would still catch a page that renders its placeholders.
+    const crashState = (await call("netops:tabs:list")).find(
+      (entry) => entry.id === crashProbe.id,
+    );
     const crashDetail = await crashPageText(getViews().tab(crashProbe.id));
+    const recordedReason = String((crashState && crashState.crashReason) || "crashed");
+    const recordedCode = String((crashState && crashState.crashExitCode) ?? "");
     check(
       "the crash page shows the reason and exit code",
-      /crashed/.test(crashDetail) && /11/.test(crashDetail),
-      crashDetail.replace(/\s+/g, " ").slice(0, 90),
+      /crashed/.test(crashDetail) &&
+        crashDetail.includes(recordedReason) &&
+        recordedCode !== "" &&
+        crashDetail.includes(recordedCode) &&
+        !/\bunknown\b/.test(crashDetail),
+      `recorded ${recordedReason}/${recordedCode}, page shows ${crashDetail.replace(/\s+/g, " ").slice(0, 70)}`,
     );
 
     const failed = checks.filter((entry) => !entry.passed);

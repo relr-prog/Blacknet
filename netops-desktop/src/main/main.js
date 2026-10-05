@@ -53,9 +53,16 @@ let sessionStore = null;
 // The shape the password manager expects for copying. It used to hang off the
 // Python service, which meant a clipboard write - the one thing a user absolutely
 // must be able to do - was unavailable whenever that service was down.
+//
+// Every method is async because Electron 44 made the clipboard asynchronous to
+// match navigator.clipboard, and then removed the sync helpers around it
+// (writeHTML, readBuffer, availableFormats, and the rest). Nothing may assume a
+// copy has landed by the time this returns: credentials.copy() awaits the write
+// before reporting copied: true, so a failed clipboard cannot look like a
+// successful copy.
 const clipboardBridge = {
-  writeText: (text) => clipboard.writeText(String(text)),
-  readText: () => clipboard.readText(),
+  writeText: async (text) => clipboard.writeText(String(text)),
+  readText: async () => clipboard.readText(),
 };
 
 function readOverrides(userDataPath) {
