@@ -525,6 +525,81 @@ async function renderCookies() {
   panelBody.append(clear);
 }
 
+// The tracker counter, the privacy grade, and the data footprint for the page
+// currently open. Read-only and in memory: it describes this page, not a history.
+async function renderReport() {
+  panelBody.replaceChildren(document.createTextNode("Reading the current page..."));
+  const report = unwrap(await window.netops.privacy.report());
+
+  if (!report.site) {
+    const empty = document.createElement("p");
+    empty.textContent = "No page has made a request yet.";
+    panelBody.replaceChildren(empty);
+    return;
+  }
+
+  const headline = document.createElement("div");
+  headline.className = "score-head";
+  const grade = document.createElement("span");
+  grade.className = report.score < 50 ? "score low" : "score";
+  grade.textContent = String(report.score);
+  const label = document.createElement("div");
+  const site = document.createElement("strong");
+  site.textContent = report.site;
+  const gradeText = document.createElement("div");
+  gradeText.className = "muted";
+  gradeText.textContent = `privacy grade: ${report.grade}`;
+  label.append(site, gradeText);
+  headline.append(grade, label);
+  panelBody.replaceChildren(headline);
+
+  panelBody.append(
+    pillRow(document.createElement("p"), [
+      ["pill", `${report.trackers} tracker(s) blocked`],
+      ["pill", `${report.requests} requests`],
+      ["pill", `${Math.round(report.bytes / 1024)} KB`],
+    ]),
+  );
+
+  // The score is never presented on its own. A number with no reasons is a vibe,
+  // and a bad grade you cannot act on is worse than no grade.
+  if (report.penalties.length) {
+    const why = document.createElement("p");
+    why.className = "muted";
+    why.textContent = report.penalties
+      .map((item) => `${item.key} x${item.count}`)
+      .join(", ");
+    panelBody.append(why);
+  }
+
+  panelBody.append(
+    table(report.sites, [
+      ["host", (row) => row.host],
+      ["requests", (row) => row.requests],
+      ["blocked", (row) => row.blocked],
+      ["third-party", (row) => row.thirdParty],
+      ["score", (row) => `${row.score} (${row.grade})`],
+    ]),
+  );
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = "Export report as JSON";
+  save.addEventListener("click", () => {
+    // Hosts and counts only: no URLs, no query strings. The export is meant to
+    // be shareable, and a full request log is not something to hand around.
+    const blob = new Blob([JSON.stringify(unwrap(window.netops.privacy.export()), null, 2)], {
+      type: "application/json",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "blacknet-privacy-report.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+  panelBody.append(save);
+}
+
 async function renderCache() {
   const report = unwrap(await window.netops.privacy.cache(state.profile));
   panelBody.replaceChildren();
@@ -623,6 +698,7 @@ const sectionViews = {
 };
 
 const panelViews = {
+  report: renderReport,
   cookies: renderCookies,
   cache: renderCache,
   pool: renderPool,
@@ -630,7 +706,7 @@ const panelViews = {
 };
 
 function showPrivacy(view, label) {
-  const target = Object.hasOwn(panelViews, view) ? view : "cookies";
+  const target = Object.hasOwn(panelViews, view) ? view : "report";
   settings.hidden = true;
   panel.hidden = false;
   for (const button of panel.querySelectorAll("nav button")) {
@@ -645,7 +721,7 @@ function showPrivacy(view, label) {
 }
 
 function showSection(section, label) {
-  if (section === "privacy") return showPrivacy("cookies", "Privacy");
+  if (section === "privacy") return showPrivacy("report", "Privacy");
   const target = Object.hasOwn(sectionViews, section) ? section : "appearance";
   panel.hidden = true;
   settings.hidden = false;

@@ -66,12 +66,31 @@ function renderTabs() {
     title.textContent = tab.title || hostOf(tab.url);
     element.append(title);
 
-    if (tab.blocked > 0) {
+    // The tracker count, with the reason in the tooltip. A bare number invites the
+    // question "blocked what?", so the breakdown goes in the title rather than
+    // only on a page nobody opens.
+    const track = tab.telemetry || {};
+    if ((track.trackers || tab.blocked) > 0) {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = String(tab.blocked);
-      badge.title = `${tab.blocked} request(s) blocked by policy`;
+      badge.textContent = String(track.trackers || tab.blocked);
+      const detail = (track.penalties || [])
+        .map((item) => `${item.key} x${item.count}`)
+        .join(", ");
+      badge.title = detail
+        ? `${track.trackers || tab.blocked} tracker(s) blocked on ${track.site || "this page"} - ${detail}`
+        : `${track.trackers || tab.blocked} request(s) blocked by policy`;
       element.append(badge);
+    }
+
+    // The privacy grade only appears when it is not perfect. A permanent "100"
+    // is noise that trains people to stop looking at it.
+    if (typeof track.score === "number" && track.score < 100 && track.site) {
+      const grade = document.createElement("span");
+      grade.className = track.score < 50 ? "grade low" : "grade";
+      grade.textContent = String(track.score);
+      grade.title = `Privacy ${track.score}/100 (${track.grade})`;
+      element.append(grade);
     }
 
     const close = document.createElement("button");
@@ -181,8 +200,11 @@ buttons.newtab.addEventListener("click", () => run(() => window.netops.tabs.crea
 buttons.settings.addEventListener("click", () =>
   run(() => window.netops.tabs.internal("settings", { view: "appearance" })),
 );
+// The privacy button lands on the report: "what is tracking this page, and what
+// grade does it get" is the question that button implies. Cookies and cache stay
+// a click away for the jobs that need them.
 buttons.inspect.addEventListener("click", () =>
-  run(() => window.netops.tabs.internal("settings", { view: "cookies" })),
+  run(() => window.netops.tabs.internal("settings", { view: "report" })),
 );
 
 document.getElementById("toolbar").addEventListener("submit", async (event) => {

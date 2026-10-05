@@ -9,6 +9,7 @@ const { WebContentsView, session } = require("electron");
 const path = require("path");
 
 const { internalPage, RENDERER_DIR } = require("./internal-pages");
+const { Ledger, registrable, hostOf } = require("./ledger");
 
 const CHROME_HEIGHT = 92;
 
@@ -64,6 +65,41 @@ class TabManager {
     this.nextId = 1;
     this.sessionBlockers = new Map(); // session -> handler ref
     this.downloadGuards = new Set(); // partitions already guarded
+    // What each page actually asked for. In memory only, never persisted: a
+    // tracker log that outlives the session is a browsing history.
+    this.ledger = new Ledger();
+    // webContents id -> tab id, so a request is charged to the tab that made it.
+    // Sessions are shared per profile, so the profile alone is not enough.
+    this.tabByContents = new Map();
+    // webContents id -> the site that tab is currently showing, which is what
+    // makes a request first- or third-party.
+    this.siteByContents = new Map();
+  }
+
+  // --- tracker telemetry ----------------------------------------------------
+
+  // The badge and the privacy report for one tab.
+  telemetry(id) {
+    return this.ledger.report(id === undefined ? this.activeId : id);
+  }
+
+  // Every tab's report, for the export.
+  telemetryAll() {
+    return this.ledger.export();
+  }
+
+  // A new top-level page starts a new accounting. Kept deliberately small: it
+  // is the current page's trackers, not a running total for the session.
+  #resetTelemetry(tab) {
+    this.ledger.reset(tab.id);
+    this.siteByContents.set(tab.view.webContents.id, registrable(hostOf(tab.view.webContents.getURL())));
+  }
+
+  #countBytes(tab, url, bytes) {
+    if (bytes > 0) {
+      const site = this.siteByContents.get(tab.view.webContents.id) || "";
+      this.ledger.record(tab.id, { url, site, bytes });
+    }
   }
 
   partitionFor(profile) {
@@ -91,6 +127,9 @@ class TabManager {
       // Set only for the shell's own pages, so the chrome can tell that closing
       // Settings is what should lock the vault again.
       internalPage: tab.internalPage || null,
+      // The page's tracker count and privacy grade. Lives on the tab because the
+      // badge is drawn per tab and reading it must not be an IPC round trip.
+      telemetry: this.ledger.glance(tab.id),
     };
   }
 
@@ -123,16 +162,33 @@ class TabManager {
     if (this.sessionBlockers.has(targetSession)) return;
     const handler = (details, callback) => {
       const reason = this.#verdict(details.url, profile);
+      const isMainFrame = details.resourceType === "mainFrame";
       if (reason) {
-        this.#countBlocked(profile);
+        this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
         this.#emit("netops:blocked", { profile, url: details.url, reason });
         callback({ cancel: true });
         return;
       }
+      // Allowed requests are counted too. A counter that only tallies refusals
+      // cannot answer "did anything get through", which is the question a tracker
+      // badge invites.
+      this.#countAllowed(details.webContentsId, details.url, isMainFrame);
       callback({ cancel: false });
     };
     targetSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, handler);
     this.sessionBlockers.set(targetSession, handler);
+
+    // Size for the data footprint. content-length is absent for chunked and
+    // compressed responses, so this undercounts rather than guessing: a wrong
+    // "KB transferred" figure would be worse than a conservative one.
+    targetSession.webRequest.onHeadersReceived({ urls: ["<all_urls>"] }, (details, callback) => {
+      const length = details.responseHeaders?.["content-length"];
+      const bytes = Number.parseInt(Array.isArray(length) ? length[0] : length, 10);
+      if (Number.isFinite(bytes) && bytes > 0) {
+        this.#countBytes(details.webContentsId, details.url, bytes);
+      }
+      callback({ cancel: false });
+    });
   }
 
   #isShellFile(url) {
@@ -179,9 +235,54 @@ class TabManager {
     return null;
   }
 
-  #countBlocked(profile) {
-    const tab = [...this.tabs.values()].find((candidate) => candidate.profile === profile);
-    if (tab) tab.blockedCount += 1;
+  // Resolves the tab behind a request. A session is shared by every tab on the same
+  // profile, so keying on the profile would charge tab 1's trackers to tab 2.
+  #tabFor(contentsId) {
+    if (contentsId === undefined || contentsId === null) return null;
+    const id = this.tabByContents.get(contentsId);
+    if (id === undefined) return null;
+    return this.tabs.get(id) || null;
+  }
+
+  #countBlocked(contentsId, url, reason, isMainFrame) {
+    const tab = this.#tabFor(contentsId);
+    if (!tab) return;
+    this.#beginPage(tab, url, isMainFrame);
+    tab.blockedCount += 1;
+    const site = this.siteByContents.get(tab.view.webContents.id) || "";
+    // The rule name is what makes the count actionable, so it is pulled out of
+    // the verdict text rather than stored as an opaque reason.
+    const rule = /tracker rule ([^(]+)/.exec(reason);
+    this.ledger.record(tab.id, {
+      url,
+      site,
+      blocked: true,
+      rule: rule ? rule[1].trim() : reason,
+      mainFrame: isMainFrame,
+    });
+    this.#emit("netops:telemetry", this.telemetry(tab.id));
+  }
+
+  #countAllowed(contentsId, url, isMainFrame) {
+    const tab = this.#tabFor(contentsId);
+    if (!tab) return;
+    this.#beginPage(tab, url, isMainFrame);
+    const site = this.siteByContents.get(tab.view.webContents.id) || "";
+    const insecure = /^http:\/\//i.test(String(url));
+    if (!this.ledger.record(tab.id, { url, site, insecure, mainFrame: isMainFrame })) return;
+    // Not on every allowed request: that would be one IPC message per asset on
+    // every page load, which is exactly the cost a privacy browser cannot afford.
+    if (tab.blockedCount > 0) this.#emit("netops:telemetry", this.telemetry(tab.id));
+  }
+
+  // A new top-level document starts a new accounting. Done here rather than on
+  // did-navigate because this is the only place the document's own URL is known:
+  // waiting for the commit would attribute the document to the previous page, and
+  // resetting after it would throw away the subresources already counted.
+  #beginPage(tab, url, isMainFrame) {
+    if (!isMainFrame) return;
+    this.ledger.reset(tab.id);
+    this.siteByContents.set(tab.view.webContents.id, registrable(hostOf(url)));
   }
 
   // Events go to the chrome view, which is its own WebContents - not to the
@@ -301,6 +402,7 @@ class TabManager {
 
   #wireTab(tab) {
     const wc = tab.view.webContents;
+    this.tabByContents.set(wc.id, tab.id);
 
     wc.on("page-title-updated", (_event, title) => {
       tab.title = title || tab.title;
@@ -308,8 +410,14 @@ class TabManager {
     });
     wc.on("did-start-loading", () => this.#broadcast());
     wc.on("did-stop-loading", () => this.#broadcast());
-    wc.on("did-navigate", (_event, _url, _inPlace, isMainFrame) => {
-      if (isMainFrame) this.#broadcast();
+    wc.on("did-navigate", (_event, url, _inPlace, isMainFrame) => {
+      if (isMainFrame) {
+        // The ledger is reset by the request filter, which sees the document
+        // request itself. This only keeps the known site current, for the window
+        // between the request and the commit.
+        this.siteByContents.set(wc.id, registrable(hostOf(url)));
+        this.#broadcast();
+      }
     });
     wc.on("did-navigate-in-page", (_event) => this.#broadcast());
     wc.on("page-favicon-updated", () => this.#broadcast());
@@ -506,9 +614,16 @@ class TabManager {
     const tab = this.tabs.get(id || this.activeId);
     if (!tab) return null;
 
+    // The maps are keyed by a webContents id, which Chromium reuses once the
+    // view is gone. Leaving an entry behind would charge a later tab's requests
+    // to a closed one.
+    const contentsId = tab.view.webContents.id;
     this.window.contentView.removeChildView(tab.view);
     tab.view.webContents.close();
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.destroy();
+    this.tabByContents.delete(contentsId);
+    this.siteByContents.delete(contentsId);
+    this.ledger.reset(id);
     this.tabs.delete(id);
     this.order = this.order.filter((candidate) => candidate !== id);
 

@@ -102,6 +102,24 @@ body {
   text-align: center;
 }
 
+/* The privacy grade. Reads as a warning only when it is low, so a good score is
+   shown quietly rather than in the same red as a blocked tracker. */
+.tab .grade {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tab .grade.low {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
 .tab .spinner {
   width: 10px;
   height: 10px;
@@ -487,6 +505,36 @@ body {
 
 .mono {
   font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 11px;
+}
+
+/* The privacy grade at report size. Larger and quieter than the tab-strip
+   version: this one is meant to be read, not glanced at. */
+.score-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.score {
+  min-width: 54px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.score.low {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.muted {
+  color: var(--muted);
   font-size: 11px;
 }
 

@@ -78,6 +78,13 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, r
     "netops:blocklist:check": (url) => core.verdictFor(url),
     "netops:theme:apply": (patch) => core.applyTheme(patch),
 
+    // --- tracker telemetry ------------------------------------------------
+    // Read-only and in-memory. There is no action to clear the ledger on demand:
+    // it already resets on every navigation, so a manual clear would only be a
+    // way to lose the current page's count.
+    "netops:privacy:report": (id) => tabs.telemetry(id),
+    "netops:privacy:export": () => tabs.telemetryAll(),
+
     // --- proxy pool -------------------------------------------------------
     "netops:pool:stats": () => core.pool.stats(),
     "netops:pool:upstreams": () => core.pool.listUpstreams(),

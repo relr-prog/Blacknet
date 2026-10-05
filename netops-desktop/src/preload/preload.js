@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld("netops", {
     clearCache: (profile) => ipcRenderer.invoke("netops:cache:clear", profile),
     checkUrl: (url) => ipcRenderer.invoke("netops:blocklist:check", url),
     applyTheme: (patch) => ipcRenderer.invoke("netops:theme:apply", patch),
+
+    // Tracker counter and privacy grade. Read-only, and only on this bridge,
+    // which ordinary pages never receive.
+    report: (tabId) => ipcRenderer.invoke("netops:privacy:report", tabId),
+    export: () => ipcRenderer.invoke("netops:privacy:export"),
   },
 
   // --- proxy pool ---------------------------------------------------------

@@ -210,6 +210,85 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     const lookalike = await call("netops:blocklist:check", "https://notgoogle-analytics.com.attacker.test/");
     check("lookalike host allowed", lookalike.blocked === false);
 
+    // Tracker telemetry. Read through the same bridge the page panel uses, so a
+    // broken wiring shows up here rather than as an empty panel.
+    const report = await call("netops:privacy:report");
+    check("privacy report returned", typeof report.score === "number", `score ${report.score}`);
+    check("privacy score in range", report.score >= 0 && report.score <= 100, `${report.score}`);
+    check("privacy grade present", typeof report.grade === "string", report.grade);
+    // The smoke page is a data: URL, so it legitimately makes no network request
+    // and there is no site to name. What must hold either way is that the report
+    // is self-consistent: a named site, or a clean empty one, never both.
+    check(
+      "report is self-consistent",
+      report.site === null
+        ? report.sites.length === 0 && report.score === 100 && report.blocked === 0
+        : typeof report.site === "string" && report.sites.length > 0,
+      `site ${String(report.site)}, ${report.sites.length} listed`,
+    );
+    check(
+      "report accounts for every site it lists",
+      report.sites.every((row) => typeof row.host === "string" && typeof row.score === "number"),
+      `${report.sites.length} sites`,
+    );
+    check("report holds no full URLs", !/https?:\/\//.test(JSON.stringify(report.sites)));
+
+    const dump = await call("netops:privacy:export");
+    check("privacy export returned", typeof dump.totals === "object", `version ${dump.version}`);
+    check("export holds no full URLs", !/https?:\/\//.test(JSON.stringify(dump)));
+
+// End-to-end: a page that really tries to phone home, through the real request
+    // filter. The tracker is https, so it passes the cleartext policy and is then
+    // refused by the blocklist on the URL string alone - before any socket, DNS or
+    // network exists. That makes this a genuine test of the real path rather than
+    // a self-fulfilling one, without needing a server.
+    const probeTab = tabs[0];
+    const probePage = "data:text/html;charset=utf-8,"
+      + encodeURIComponent(
+        "<!doctype html><title>Tracker probe</title><h1>probe</h1>"
+          + '<img src="https://www.google-analytics.com/collect?v=1">'
+          + '<img src="https://www.doubleclick.net/pixel.gif">',
+      );
+    // Loaded straight onto the view, because navigate() refuses data: URLs by
+    // policy and that policy is not what is under test here. Everything below the
+    // renderer still applies: the request filter sees these subresources.
+    await getViews().tab(probeTab.id).webContents.loadURL(probePage);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const live = await call("netops:privacy:report", probeTab.id);
+      if (live.blocked > 0) break;
+      await sleep(200);
+    }
+    const live = await call("netops:privacy:report", probeTab.id);
+    check("a real page's requests are counted", live.requests > 0, `${live.requests} requests`);
+    check("a real tracker attempt is blocked", live.blocked >= 2, `${live.blocked} blocked`);
+    check(
+      "each blocked tracker is named in the report",
+      live.sites.filter((row) => row.blocked > 0).length >= 2,
+      live.sites.filter((row) => row.blocked > 0).map((row) => row.host).join(" "),
+    );
+    check(
+      "a page with no origin claims no third-party status",
+      live.sites.every((row) => row.thirdParty === 0),
+      live.sites.map((row) => `${row.host}:tp${row.thirdParty}`).join(" "),
+    );
+    check(
+      "no full URL survived into the report",
+      !/https?:\/\/|v=1/.test(JSON.stringify(live)),
+    );
+    // This page is a data: URL, so it has no site of its own to be graded. The
+    // trackers are then the whole story and the score has to reflect them -
+    // a document with no origin that phones home twice is not excellent.
+    check(
+      "a page with no origin is graded on what it actually did",
+      Number.isInteger(live.score) && live.score < 100 && live.score > 0,
+      `${String(live.site)} scored ${live.score} (${live.grade})`,
+    );
+    check(
+      "the score's reasons are reported with it",
+      live.penalties.length > 0 && live.penalties.every((p) => p.count > 0),
+      JSON.stringify(live.penalties),
+    );
+
     const cookies = await call("netops:cookies:report");
     check("cookie report returned", typeof cookies.count === "number", `${cookies.count} cookies`);
     check("no raw cookie values", !JSON.stringify(cookies).includes('"value":"'));
@@ -318,13 +397,36 @@ async function runSmoke({ handlers, BrowserWindow, getViews, quit }) {
     const pageView = getViews().tab(settingsTab.id);
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const state = await pageState(pageView);
-      if (state.panelVisible && state.pills > 0) break;
+      if (state.panelVisible && state.content > 0) break;
+      await sleep(250);
+    }
+    const reportUi = await pageState(pageView);
+    check(
+      "privacy page opens on the Report",
+      reportUi.panelVisible === true && reportUi.view === "report",
+      `panel ${reportUi.panelVisible}, view ${reportUi.view}, hash ${reportUi.hash}`,
+    );
+    // The report must say something even with nothing to report, or the panel
+    // looks broken rather than clean.
+    check(
+      "report panel renders content",
+      reportUi.content > 0,
+      `${reportUi.content} element(s)`,
+    );
+
+    // The other privacy panels still have to be reachable behind it.
+    await pageView.webContents.executeJavaScript(
+      `document.querySelector('#panel nav button[data-view="cookies"]').click()`,
+    );
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const state = await pageState(pageView);
+      if (state.view === "cookies" && state.pills > 0) break;
       await sleep(250);
     }
     const cookieUi = await pageState(pageView);
     check(
-      "privacy page opens on Cookies",
-      cookieUi.panelVisible === true && cookieUi.view === "cookies",
+      "cookies panel still reachable",
+      cookieUi.panelVisible === true && cookieUi.view === "cookies" && cookieUi.pills > 0,
       `panel ${cookieUi.panelVisible}, view ${cookieUi.view}, hash ${cookieUi.hash}`,
     );
     // An empty jar is a legitimate result: it must still render the summary and
