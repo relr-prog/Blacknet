@@ -243,9 +243,7 @@ async function renderNetwork() {
     row(
       "Rotator",
       toggleLabel,
-      mayChange
-        ? "Traffic is sent through the configured upstreams."
-        : "An administrator account is required to change this.",
+      "Traffic is sent through the configured upstreams.",
     ),
   );
 

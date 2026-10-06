@@ -107,8 +107,11 @@ async function pageState(view) {
     rows: document.querySelectorAll('.setting').length,
     // The moved sections do not all build .setting rows - Account is a profile
     // plus a step-up button, Network is a toggle - so "did this section paint
-    // anything at all" is the honest question.
-    content: document.querySelectorAll('#settings button, #settings input, #settings ul, #settings li, #settings p, #settings .pill, #settings table tr').length,
+    // anything at all" is the honest question. Scoped to #settings-body rather
+    // than #settings, because the section nav lives inside #settings too: a
+    // selector broad enough to match those buttons counts the navigation as
+    // content and an empty body passes as rendered.
+    content: document.querySelectorAll('#settings-body button, #settings-body input, #settings-body ul, #settings-body li, #settings-body p, #settings-body .pill, #settings-body table tr').length,
     // Scoped to the panel, because "did the privacy half paint anything" is a
     // different question from the same question about the settings half - and a
     // wait that watches the wrong half reports ready before anything is there.
@@ -425,7 +428,7 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const pageView = getViews().tab(settingsTab.id);
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const state = await pageState(pageView);
-      if (state.panelVisible && state.content > 0) break;
+      if (state.panelVisible && state.panelContent > 0) break;
       await sleep(250);
     }
     const reportUi = await pageState(pageView);
@@ -435,11 +438,14 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       `panel ${reportUi.panelVisible}, view ${reportUi.view}, hash ${reportUi.hash}`,
     );
     // The report must say something even with nothing to report, or the panel
-    // looks broken rather than clean.
+    // looks broken rather than clean. panelContent, not content: the report
+    // lives in #panel, and the settings metric reads the settings body - which
+    // is empty here, and whose nav buttons used to make this pass no matter
+    // what the panel showed.
     check(
       "report panel renders content",
-      reportUi.content > 0,
-      `${reportUi.content} element(s)`,
+      reportUi.panelContent > 0,
+      `${reportUi.panelContent} element(s)`,
     );
 
     // The egress view, with the gateway stopped - which is the state the smoke

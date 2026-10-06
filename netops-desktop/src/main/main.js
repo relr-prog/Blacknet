@@ -439,6 +439,15 @@ function buildMenu() {
 // settings file and the same proxy ports, so hand the launch back to the running
 // window.
 if (!app.requestSingleInstanceLock()) {
+  // Under --smoke this quit was silent and still exit 0, so a profile locked by
+  // a browser left running would report a green gate that had run nothing at
+  // all. Say why and fail instead: app.quit() would exit 0, and stderr to a
+  // pipe can be truncated by an immediate exit, so the message is written
+  // synchronously before the code is forced.
+  if (process.argv.includes("--smoke")) {
+    fs.writeSync(2, "[smoke] another instance holds the profile lock; close it before running smoke\n");
+    process.exit(1);
+  }
   app.quit();
 } else {
   app.on("second-instance", () => {
