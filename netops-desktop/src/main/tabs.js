@@ -301,13 +301,27 @@ class TabManager {
     if (this.send) this.send(channel, payload);
   }
 
-  create({ profile, url, active = true } = {}) {
+  // record: false is the restore path. A restored tab already has a slot in the
+  // file it came from, so recording it as a new one first would append a copy
+  // on top of the entry it is reopening and leave both behind - the file then
+  // doubled on every launch, 2 tabs becoming 2, 4, 8, 16.
+  create({ profile, url, active = true, record = true } = {}) {
     // The capture hook is attached here instead of unconditionally, so a browser
     // that is not capturing passwords keeps exactly the old security posture:
     // no preload at all in a page that loads untrusted content.
     const tab = this.#createTab({ profile, active, preload: this.captureEnabled() ? PASSWORD_HOOK : undefined });
-    this.navigate(tab.id, url || this.config.newTabUrl);
-    if (this.sessionStore) this.sessionStore.record(this.describe(tab));
+    try {
+      this.navigate(tab.id, url || this.config.newTabUrl);
+    } catch (error) {
+      // navigate() refuses a URL before it loads anything, and by then
+      // #createTab has already registered the view. Leaving it behind would put
+      // a blank tab in the strip for a session entry that never opened - and if
+      // every entry failed, close()'s "no tabs left" branch would open a
+      // replacement on top of the fallback main.js opens for itself.
+      this.#discard(tab);
+      throw error;
+    }
+    if (record && this.sessionStore) this.sessionStore.record(this.describe(tab));
     return this.describe(tab);
   }
 
@@ -329,8 +343,20 @@ class TabManager {
 
     for (const entry of entries) {
       try {
-        const tab = this.create({ profile: entry.profile, url: entry.url, active: false });
-        this.sessionStore.claim(tab.id, entry.slot);
+        // Opened without recording: the entry is already in the file at
+        // entry.slot, and recording it first is what used to duplicate it.
+        const tab = this.create({
+          profile: entry.profile,
+          url: entry.url,
+          active: false,
+          record: false,
+        });
+        // Claimed rather than appended, so focus and slot ordering survive.
+        // claim() only fails when the slot is genuinely gone, and an open tab
+        // that gets dropped over bookkeeping is worse than one extra entry.
+        if (!this.sessionStore.claim(tab.id, entry.slot)) {
+          this.sessionStore.record(tab);
+        }
         opened += 1;
       } catch (error) {
         skipped += 1;
@@ -484,6 +510,30 @@ class TabManager {
 
     this.#broadcast();
     return tab;
+  }
+
+  // Undoes a create() that failed after the view was registered.
+  //
+  // close() is deliberately not reused: it forgets the session slot, so the tab
+  // would be erased from the next launch rather than retried, and it opens a
+  // replacement whenever the last tab goes, which would stack a blank tab next
+  // to the one main.js already opens as its fallback.
+  #discard(tab) {
+    if (!tab || !tab.view) return;
+    const contentsId = tab.view.webContents.id;
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.contentView.removeChildView(tab.view);
+    }
+    tab.view.webContents.close();
+    if (!tab.view.webContents.isDestroyed()) tab.view.webContents.destroy();
+    this.tabByContents.delete(contentsId);
+    this.siteByContents.delete(contentsId);
+    this.ledger.reset(tab.id);
+    this.tabs.delete(tab.id);
+    this.order = this.order.filter((candidate) => candidate !== tab.id);
+    if (this.activeId === tab.id) this.activeId = this.order[0] || null;
+    this.#layout();
+    this.#broadcast();
   }
 
   #wireTab(tab) {

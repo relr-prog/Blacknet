@@ -841,6 +841,34 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
 
     check("tab close", (await call("netops:tabs:close", created.id)).length === 1);
 
+    // A create() on a refused URL must undo itself. navigate() refuses before it
+    // loads anything, but by then #createTab has already registered the view -
+    // so without a rollback the strip keeps a blank tab and the session file
+    // keeps an entry for a page that never opened. With every entry refused,
+    // close()'s empty branch plus main.js's own fallback would stack two blanks.
+    const sessionFile = path.join(app.getPath("userData"), "session.json");
+    const tabsBeforeRefusal = await call("netops:tabs:list");
+    const entriesBeforeRefusal = JSON.parse(fs.readFileSync(sessionFile, "utf8")).tabs.length;
+    let createRefusal = "";
+    try {
+      await call("netops:tabs:create", { url: "file:///etc/passwd" });
+    } catch (error) {
+      createRefusal = error.message;
+    }
+    const tabsAfterRefusal = await call("netops:tabs:list");
+    const entriesAfterRefusal = JSON.parse(fs.readFileSync(sessionFile, "utf8")).tabs.length;
+    check("create on a refused URL is refused", /not allowed/.test(createRefusal), createRefusal);
+    check(
+      "a refused create leaves no blank tab",
+      tabsAfterRefusal.length === tabsBeforeRefusal.length,
+      `${tabsBeforeRefusal.length} -> ${tabsAfterRefusal.length} tab(s)`,
+    );
+    check(
+      "a refused create writes no session entry",
+      entriesAfterRefusal === entriesBeforeRefusal,
+      `${entriesBeforeRefusal} -> ${entriesAfterRefusal} entry(ies)`,
+    );
+
     // Session restore, checked against the file the next launch will read. This
     // is the whole feature: the tabs you had open are the tabs you get back.
     // A crash mid-write is the interesting failure, which is why this reads the
@@ -852,7 +880,6 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const restorable = await call("netops:tabs:create", {
       url: "https://blacknet-smoke.invalid/",
     });
-    const sessionFile = path.join(app.getPath("userData"), "session.json");
     const savedRaw = fs.readFileSync(sessionFile, "utf8");
     const saved = JSON.parse(savedRaw);
     const urls = Array.isArray(saved.tabs) ? saved.tabs.map((entry) => entry.url) : [];

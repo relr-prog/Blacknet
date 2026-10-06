@@ -116,8 +116,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (223)
-npm run smoke                  # real Electron window, headless, 88 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (231)
+npm run smoke                  # real Electron window, headless, 94 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator
