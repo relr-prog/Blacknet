@@ -9,5 +9,13 @@
     <string name="action_tabs">Tabs</string>
     <string name="action_new_tab">New tab</string>
     <string name="action_close_tab">Close tab</string>
+    <string name="action_more">More options</string>
+    <string name="action_history">History</string>
+    <string name="action_clear">Clear</string>
+    <string name="history_empty">No history yet</string>
+    <string name="history_delete_confirm">Delete this entry?</string>
+    <string name="history_clear_confirm">Clear all history?</string>
+    <string name="history_delete">Delete</string>
+    <string name="history_meta">%1$s  ·  %2$s</string>
     <string name="blocked_count">Blocked</string>
 </resources>

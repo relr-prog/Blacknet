@@ -74,6 +74,7 @@ class BrowserWebViewClient(
             is BrowserPolicy.Verdict.Refused -> refuse(view, url, replace = true)
             is BrowserPolicy.Verdict.Allowed -> {
                 tab.refusedTarget = null
+                manager.recordVisit(url, "")
                 manager.dispatchPageStarted(tab)
             }
         }

@@ -70,6 +70,12 @@
             style="@style/Widget.App.Toolbar.Button"
             android:contentDescription="@string/action_tabs"
             android:src="@drawable/ic_tabs" />
+
+        <ImageButton
+            android:id="@+id/more_button"
+            style="@style/Widget.App.Toolbar.Button"
+            android:contentDescription="@string/action_more"
+            android:src="@drawable/ic_more" />
     </LinearLayout>
 
     <ProgressBar

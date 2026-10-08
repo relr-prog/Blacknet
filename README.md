@@ -40,7 +40,8 @@ machine for; it never needed a second language runtime to do it.
 | Session restore | Working. Stores URLs and the active tab, nothing else; opt out in Settings |
 | Settings schema | One typed table; reads and writes validated identically |
 | `.onion` addresses refused before any request | Working. The tab keeps the address and shows a "site can't be reached" page; the rule is main-process knowledge and is never put on the IPC map |
-| Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 37 JVM tests |
+| Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 45 JVM tests |
+| History (Android) | Working. Local SQLite, newest first, one row per URL, capped at 2000: tap to open, long-press to delete, Clear empties it. Refused targets and tracker URLs are never recorded |
 
 Not built, and not pretending to be: per-site fingerprint profiles, request
 rewriting, a shared fingerprint marketplace, any AI layer.
@@ -129,7 +130,7 @@ cd ../proxy-rotator
 .venv/bin/python -m pytest     # 76 tests
 
 cd ../netops-android
-gradle test                    # JVM unit tests over the policy core
+gradle test                    # 45 JVM unit tests over the policy core and history
 gradle assembleDebug           # debug APK (app/build/outputs/apk/debug/)
 gradle assembleRelease         # signed, R8-minified APK (see below)
 gradle lintDebug               # static analysis of the shell

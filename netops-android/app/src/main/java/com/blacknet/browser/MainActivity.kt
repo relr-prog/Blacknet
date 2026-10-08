@@ -1,14 +1,17 @@
 package com.blacknet.browser
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
@@ -25,6 +28,12 @@ class MainActivity : AppCompatActivity(), TabManager.Listener {
     private lateinit var backButton: ImageButton
     private lateinit var forwardButton: ImageButton
 
+    private val historyLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val url = result.data?.getStringExtra(HistoryActivity.EXTRA_URL)
+            if (!url.isNullOrEmpty()) navigate(url, showAddress = url)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -36,6 +45,7 @@ class MainActivity : AppCompatActivity(), TabManager.Listener {
         forwardButton = findViewById(R.id.forward_button)
         val reloadButton: ImageButton = findViewById(R.id.reload_button)
         val tabsButton: ImageButton = findViewById(R.id.tabs_button)
+        val moreButton: ImageButton = findViewById(R.id.more_button)
 
         policy = BrowserPolicy()
         val assetLoader = WebViewAssetLoader.Builder()
@@ -60,6 +70,7 @@ class MainActivity : AppCompatActivity(), TabManager.Listener {
         forwardButton.setOnClickListener { manager.current?.webView?.let { if (it.canGoForward()) it.goForward() } }
         reloadButton.setOnClickListener { reload() }
         tabsButton.setOnClickListener { showTabsDialog() }
+        moreButton.setOnClickListener { showMoreMenu(it) }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -144,6 +155,21 @@ class MainActivity : AppCompatActivity(), TabManager.Listener {
             .show()
     }
 
+    private fun showMoreMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menu.add(0, MENU_HISTORY, 0, getString(R.string.action_history))
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                MENU_HISTORY -> {
+                    historyLauncher.launch(Intent(this, HistoryActivity::class.java))
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
     private fun hideKeyboard() {
         getSystemService(InputMethodManager::class.java)
             .hideSoftInputFromWindow(omnibox.windowToken, 0)
@@ -198,5 +224,9 @@ class MainActivity : AppCompatActivity(), TabManager.Listener {
         } else {
             blockedBadge.visibility = View.GONE
         }
+    }
+
+    companion object {
+        private const val MENU_HISTORY = 1
     }
 }

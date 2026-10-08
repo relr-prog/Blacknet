@@ -6,6 +6,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.FrameLayout
+import com.blacknet.browser.history.History
+import com.blacknet.browser.history.HistoryStore
 import com.blacknet.browser.policy.BrowserPolicy
 import com.blacknet.browser.policy.Pages
 import androidx.webkit.WebViewAssetLoader
@@ -119,6 +121,13 @@ class TabManager(
 
     fun dispatchProgress(tab: Tab, percent: Int) = listener.onProgress(this, tab, percent)
 
+    // Both visit records come through here so the filter (policy verdict,
+    // shell pages excluded) is one rule, not two guesses.
+    fun recordVisit(url: String?, title: String) {
+        if (!History.shouldRecord(policy, url)) return
+        HistoryStore.get(context).recordVisit(url!!, title, System.currentTimeMillis())
+    }
+
     private fun createTab(): Tab {
         val webView = WebView(context)
         val tab = Tab(nextId++, webView)
@@ -140,6 +149,7 @@ class TabManager(
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 tab.title = title ?: ""
+                recordVisit(view?.url, tab.title)
                 dispatchPageUpdated(tab)
             }
 
