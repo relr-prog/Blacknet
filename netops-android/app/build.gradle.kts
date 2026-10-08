@@ -1,7 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val propsFile = rootProject.file("keystore.properties")
+val releaseProps: Properties? =
+    if (propsFile.exists()) Properties().apply { propsFile.inputStream().use { load(it) } } else null
 
 android {
     namespace = "com.blacknet.browser"
@@ -15,13 +21,26 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        releaseProps?.let { p ->
+            create("release") {
+                storeFile = rootProject.file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

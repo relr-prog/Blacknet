@@ -3,6 +3,9 @@
 build/
 local.properties
 *.log
+*.jks
+*.keystore
+keystore.properties
 .idea/
 .kotlin/
 captures/

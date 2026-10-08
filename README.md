@@ -129,10 +129,19 @@ cd ../proxy-rotator
 .venv/bin/python -m pytest     # 76 tests
 
 cd ../netops-android
-gradle test                    # 37 JVM unit tests over the policy core
+gradle test                    # JVM unit tests over the policy core
 gradle assembleDebug           # debug APK (app/build/outputs/apk/debug/)
+gradle assembleRelease         # signed, R8-minified APK (see below)
 gradle lintDebug               # static analysis of the shell
 ```
+
+Release builds for `netops-android/` are signed from `keystore.properties`,
+which points at `blacknet-release.jks`. Both are gitignored: the keystore is
+the app's identity, and losing it means an installed app can never be updated
+in place — back it up somewhere the repository is not. Without them
+`assembleRelease` still runs, producing an unsigned APK. The release build is
+R8-minified to about a sixth of the debug size; it is built and lint-clean but
+has never run on a physical device, so `app-debug.apk` stays the fallback.
 
 `tools/check_syntax.sh` is the gate that runs everything that runs without a
 display. `npm run smoke` is the one that exercises a real window, a real
