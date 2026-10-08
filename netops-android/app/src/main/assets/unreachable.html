@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self' data:; script-src 'self';"
+    />
+    <title>This site can't be reached</title>
+    <link rel="stylesheet" href="unreachable.css" />
+  </head>
+  <body class="unreachable">
+    <main>
+      <div class="logo" aria-hidden="true"></div>
+      <h1>This site can't be reached</h1>
+      <p class="reason" id="reason">&nbsp;</p>
+      <p class="code">ERR_NAME_NOT_RESOLVED</p>
+      <p class="hint">
+        Check the address for a typo, or press Reload to try again. The address
+        stays in the address bar either way.
+      </p>
+      <p><button id="reload" type="button">Reload</button></p>
+    </main>
+    <script src="unreachable.js"></script>
+  </body>
+</html>

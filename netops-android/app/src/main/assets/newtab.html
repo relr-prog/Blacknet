@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline';"
+    />
+    <title>New tab</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --text: #1f2937;
+        --muted: #566173;
+        --accent: #0d9488;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #e1e4ea;
+          --muted: #a9b2c0;
+          --accent: #569cd6;
+        }
+      }
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 0.4rem;
+        font-size: 1.5rem;
+        letter-spacing: 0.02em;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Black<span>Net</span></h1>
+      <p>Search or type a URL above.</p>
+    </main>
+  </body>
+</html>

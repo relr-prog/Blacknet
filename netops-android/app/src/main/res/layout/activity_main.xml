@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="8dp">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1">
+
+            <EditText
+                android:id="@+id/omnibox"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:layout_marginEnd="64dp"
+                android:autofillHints=""
+                android:background="@drawable/omnibox_bg"
+                android:hint="@string/omnibox_hint"
+                android:imeOptions="actionGo"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:maxLines="1"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:textColor="@color/text"
+                android:textColorHint="@color/muted"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/blocked_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="24dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/badge_bg"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:textColor="@color/bg"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:text="12"
+                xmlns:tools="http://schemas.android.com/tools" />
+        </FrameLayout>
+
+        <ImageButton
+            android:id="@+id/reload_button"
+            style="@style/Widget.App.Toolbar.Button"
+            android:contentDescription="@string/action_reload"
+            android:src="@drawable/ic_reload" />
+
+        <ImageButton
+            android:id="@+id/tabs_button"
+            style="@style/Widget.App.Toolbar.Button"
+            android:contentDescription="@string/action_tabs"
+            android:src="@drawable/ic_tabs" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:progressTint="@color/accent" />
+
+    <FrameLayout
+        android:id="@+id/web_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/back_button"
+            style="@style/Widget.App.Nav.Button"
+            android:contentDescription="@string/action_back"
+            android:src="@drawable/ic_back" />
+
+        <ImageButton
+            android:id="@+id/forward_button"
+            style="@style/Widget.App.Nav.Button"
+            android:contentDescription="@string/action_forward"
+            android:src="@drawable/ic_forward" />
+    </LinearLayout>
+
+</LinearLayout>

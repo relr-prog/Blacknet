@@ -1,11 +1,13 @@
 # BlackNet
 
-A desktop browser with a rotating proxy, a tracker counter, and a password vault
-that needs an OS key rather than an account.
+A browser with a rotating proxy, a tracker counter, and a password vault that
+needs an OS key rather than an account. One policy, two shells: the desktop
+build and an Android build on the system WebView.
 
 | Path | What it is | Runtime |
 | --- | --- | --- |
 | `netops-desktop/` | The browser. Tabs, chrome, settings, vault, telemetry, and supervision of the proxy gateway | Electron 44 (Chromium 152) + a C++20 N-API policy addon |
+| `netops-android/` | The same browser for Android. Tabs, address bar, the same tracker rules, the same refusal page | Kotlin + Android System WebView (minSdk 26) |
 | `proxy-rotator/` | The rotating upstream proxy the browser can route through | Python 3.11+ |
 | `netops/` | **Retired.** The old Python control plane. Nothing in the desktop shell reads it | Unused |
 
@@ -38,6 +40,7 @@ machine for; it never needed a second language runtime to do it.
 | Session restore | Working. Stores URLs and the active tab, nothing else; opt out in Settings |
 | Settings schema | One typed table; reads and writes validated identically |
 | `.onion` addresses refused before any request | Working. The tab keeps the address and shows a "site can't be reached" page; the rule is main-process knowledge and is never put on the IPC map |
+| Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 37 JVM tests |
 
 Not built, and not pretending to be: per-site fingerprint profiles, request
 rewriting, a shared fingerprint marketplace, any AI layer.
@@ -100,6 +103,7 @@ pool of healthy upstreams that all resolve to one address is reported as
   that loads arbitrary sites is exactly where an unpatched Chromium matters.
 - A C++20 toolchain for the native addon (CMake)
 - `python3.13` for the rotator if you use it
+- JDK 17+ and the Android SDK (platform 35) for `netops-android/`
 
 `npm install` does not download the Electron binary any more: since Electron 42
 that happens in a `postinstall` script, which npm's supply-chain rules have
@@ -123,6 +127,11 @@ bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator
 .venv/bin/python -m pytest     # 76 tests
+
+cd ../netops-android
+gradle test                    # 37 JVM unit tests over the policy core
+gradle assembleDebug           # debug APK (app/build/outputs/apk/debug/)
+gradle lintDebug               # static analysis of the shell
 ```
 
 `tools/check_syntax.sh` is the gate that runs everything that runs without a

@@ -1,0 +1,105 @@
+/* Refusal page for Android. Same palette and same wording as the desktop
+   shell; only the delivery changed (a local asset instead of a file:// page).
+   prefers-color-scheme is used instead of light-dark() so old WebView
+   engines get the right scheme too. */
+
+:root {
+  --bg: #f4f5f7;
+  --surface: #e5e7eb;
+  --raised: #fafbfc;
+  --line: #d3d7de;
+  --text: #1f2937;
+  --muted: #566173;
+  --accent: #0d9488;
+  --warn: #8a6a12;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e222a;
+    --surface: #252b35;
+    --raised: #2b323d;
+    --line: #3a4250;
+    --text: #e1e4ea;
+    --muted: #a9b2c0;
+    --accent: #569cd6;
+    --warn: #d6b24c;
+  }
+}
+
+body.unreachable {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px;
+  color: var(--text);
+  background: var(--bg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.unreachable main {
+  max-width: 34rem;
+}
+
+body.unreachable .logo {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.9rem;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  box-sizing: border-box;
+}
+
+body.unreachable .logo::after {
+  content: "";
+  display: block;
+  height: 3px;
+  margin-top: 24px;
+  background: var(--accent);
+}
+
+body.unreachable h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  color: var(--warn);
+}
+
+body.unreachable .reason {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+body.unreachable .code {
+  margin: 0 0 1rem;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+body.unreachable .hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+body.unreachable button {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+body.unreachable button:hover {
+  background: var(--raised);
+}
+
+body.unreachable button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
