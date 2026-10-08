@@ -7,9 +7,17 @@
 
 const { WebContentsView, session } = require("electron");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 const { internalPage, RENDERER_DIR } = require("./internal-pages");
 const { Ledger, registrable, hostOf } = require("./ledger");
+const { onionHost } = require("./onion");
+
+// The page shown instead of a load this browser refuses, and the file URL it is
+// served from - so a commit of that page is recognisable and does not clear the
+// address it is standing in for.
+const BLOCK_PAGE = path.join(RENDERER_DIR, "unreachable.html");
+const BLOCK_PAGE_URL = pathToFileURL(BLOCK_PAGE).href;
 
 const CHROME_HEIGHT = 92;
 
@@ -45,7 +53,7 @@ function isRealConsoleFault(level, message) {
 }
 
 class TabManager {
-  constructor({ window: win, native, config, log, send, captureEnabled, rotator }) {
+  constructor({ window: win, native, config, log, send, captureEnabled, ipRotator }) {
     this.window = win;
     this.native = native;
     this.config = config;
@@ -54,7 +62,7 @@ class TabManager {
     this.send = send || null;
     // Injected by main.js so TabManager does not need to know how the proxy
     // gateway is supervised. Only proxy() is used.
-    this.rotator = rotator || null;
+    this.ipRotator = ipRotator || null;
     // Injected by main.js so TabManager does not need to know about the password
   // manager. Returns false while the feature is unavailable (guest, signed out,
   // or switched off in settings).
@@ -117,7 +125,11 @@ class TabManager {
       id: tab.id,
       profile: tab.profile,
       title: tab.title,
-      url: wc.getURL() || tab.pendingUrl || this.config.newTabUrl,
+      // A tab showing the refusal page is still on the address the operator
+      // asked for: what is painted is an explanation, and the address bar has
+      // to keep the name it was given rather than the path of the file
+      // explaining it.
+      url: tab.blockedUrl || wc.getURL() || tab.pendingUrl || this.config.newTabUrl,
       loading: wc.isLoading(),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
@@ -170,8 +182,22 @@ class TabManager {
   #installBlocking(targetSession, profile) {
     if (this.sessionBlockers.has(targetSession)) return;
     const handler = (details, callback) => {
-      const reason = this.#verdict(details.url, profile);
       const isMainFrame = details.resourceType === "mainFrame";
+      // Refused before the verdict, so no part of the request - not even the
+      // lookup the tab would otherwise make - reaches the network. Cancelled
+      // without a counter and without an event as well: a name in that family
+      // is not a tracker hit, and the tab is about to show the operator the
+      // explanation itself, so nothing else has to be told.
+      if (onionHost(details.url)) {
+        if (isMainFrame) {
+          const tab = this.#tabFor(details.webContentsId);
+          // The callback has to run before the view is given anything to load.
+          if (tab) setImmediate(() => this.#showBlocked(tab, details.url));
+        }
+        callback({ cancel: true });
+        return;
+      }
+      const reason = this.#verdict(details.url, profile);
       if (reason) {
         this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
         this.#emit("netops:blocked", { profile, url: details.url, reason });
@@ -227,7 +253,7 @@ class TabManager {
 
     // Loopback is allowed even though the URL policy blocks private ranges by
     // default: the proxy gateway the shell supervises lives there, and blocking it
-    // would break the rotator from inside the browser that is using it.
+    // would break the IP rotator from inside the browser that is using it.
     if (parsed.host === "127.0.0.1" || parsed.host === "localhost" || parsed.host === "::1") {
       return null;
     }
@@ -548,6 +574,11 @@ class TabManager {
     wc.on("did-stop-loading", () => this.#broadcast());
     wc.on("did-navigate", (_event, url, _inPlace, isMainFrame) => {
       if (isMainFrame) {
+        // Committed somewhere other than the refusal page: the address the tab
+        // is standing in for is no longer the address it is on. The refusal
+        // page itself is excluded, because that commit is the tab still being
+        // on the refused name.
+        if (tab.blockedUrl && !this.#isBlockPage(url)) tab.blockedUrl = null;
         // The ledger is reset by the request filter, which sees the document
         // request itself. This only keeps the known site current, for the window
         // between the request and the commit.
@@ -559,6 +590,14 @@ class TabManager {
     wc.on("page-favicon-updated", () => this.#broadcast());
     wc.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
       if (!isMainFrame || code === -3) return; // -3 is an aborted load
+      // Belt and braces for the refused name: the request filter and the
+      // address bar both answer ahead of Chromium, but a load started by a
+      // redirect or by a restored session can still arrive here first, and
+      // "name not resolved" is not the answer the operator should get for it.
+      if (onionHost(url)) {
+        this.#showBlocked(tab, url);
+        return;
+      }
       tab.title = `Failed to load (${code})`;
       // The URL and code are the whole diagnosis, so they go to the log.
       this.log(`tab ${tab.id} load failed ${code} ${description}: ${url}`);
@@ -644,6 +683,50 @@ class TabManager {
     });
   }
 
+  // A name this browser refuses, shown the way a browser shows a name that does
+  // not exist: the tab keeps the address that was asked for, and the content is
+  // one fixed explanation the page fills in from the address itself. The page
+  // gets no bridge, so it cannot ask the shell anything - which is the point.
+  // The rule that produced the refusal is main-process knowledge, and the only
+  // thing a page ever sees is the explanation.
+  //
+  // record: only a navigation the shell itself started updates the session
+  // file. A link followed inside a page leaves the stored URL alone here
+  // exactly as it does everywhere else, so a session still means "the pages
+  // that were open", not "every request that was made".
+  #showBlocked(tab, url, { record = false, attempt = 0 } = {}) {
+    if (!tab || !this.tabs.has(tab.id)) return this.describe(tab);
+    const wc = tab.view.webContents;
+    if (wc.isDestroyed()) return this.describe(tab);
+    tab.blockedUrl = url;
+    tab.pendingUrl = url;
+    // The name, not a phrase: a tab whose title is a sentence is a tab the
+    // operator cannot tell apart from the others in the strip.
+    tab.title = onionHost(url) || url;
+    if (record && this.sessionStore) this.sessionStore.navigate({ ...this.describe(tab), url });
+    wc.loadFile(BLOCK_PAGE, { query: { url } }).catch((error) => {
+      if (!this.tabs.has(tab.id)) return;
+      // Asked for from inside a navigation that is still going (the link that
+      // was just refused), so the load can be aborted by that navigation's own
+      // end. Retried once, for the same reason the crash page is: a tab left on
+      // a half-torn-down document is indistinguishable from a broken shell.
+      if (attempt === 0 && /ERR_ABORTED|aborted/i.test(error.message || "")) {
+        setTimeout(() => this.#showBlocked(tab, url, { record, attempt: 1 }), 150);
+        return;
+      }
+      this.log(`tab ${tab.id} refusal page failed: ${error.message}`);
+    });
+    this.#broadcast();
+    return this.describe(tab);
+  }
+
+  // Whether a commit is the explanation page itself, which is what keeps the
+  // address it stands in for from being cleared the moment it loads.
+  #isBlockPage(url) {
+    return typeof url === "string"
+      && (url === BLOCK_PAGE_URL || url.startsWith(`${BLOCK_PAGE_URL}?`));
+  }
+
   // Permissions are opt-in, not opt-out.
   #applyPrivacy(targetSession) {
     const allowed = new Set(this.config.defaultPermissions || []);
@@ -658,7 +741,7 @@ class TabManager {
   // gateway is up it wins, because it is the thing that actually changes the exit
   // IP per request rather than per profile.
   #applyProxy(tab) {
-    const gateway = this.rotator ? this.rotator.proxy() : null;
+    const gateway = this.ipRotator ? this.ipRotator.proxy() : null;
     let rules = gateway;
     if (!rules) {
       const upstream = this.native.pickUpstream(tab.profile);
@@ -679,7 +762,7 @@ class TabManager {
       .catch((error) => this.log(`proxy: ${error.message}`));
   }
 
-  // Called when the rotator is switched on or off: every tab has to be told a
+  // Called when the IP rotator is switched on or off: every tab has to be told a
   // new proxy, not just the ones created after the change.
   refreshProxy() {
     for (const tab of this.tabs.values()) this.#applyProxy(tab);
@@ -720,6 +803,14 @@ class TabManager {
     if (!looksLikeUrl && this.config.searchUrl) {
       target = this.config.searchUrl.replace("%s", encodeURIComponent(requested));
     }
+
+    // The refusal runs ahead of the policy: this name is never looked up at all,
+    // and the tab gets the explanation rather than a thrown error. A create()
+    // from the address bar and a restored session both come through here, and
+    // neither should be refused outright for a name that simply cannot be
+    // reached from this browser - the operator has to see the address they gave
+    // and the reason it did not open.
+    if (onionHost(target)) return this.#showBlocked(tab, target, { record: true });
 
     // Same policy the request filter applies, so the address bar can never
     // reach a host or scheme the network layer would refuse anyway.

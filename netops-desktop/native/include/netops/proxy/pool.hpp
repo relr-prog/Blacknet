@@ -17,7 +17,7 @@
 
 namespace netops::proxy {
 
-enum class UpstreamKind { Http, Https, Socks5, Direct, Tor };
+enum class UpstreamKind { Http, Https, Socks5, Direct, Circuit };
 enum class Health { Unknown, Healthy, Degraded, Unhealthy, Quarantined };
 enum class Strategy { RoundRobin, Random, LeastUsed, Sticky, Failover };
 
@@ -66,7 +66,7 @@ struct Selection {
     std::string reason;  // why this upstream was chosen
 };
 
-// Parses the same "host:port:user:pass#tag=lab" format the rotator accepts.
+// Parses the same "host:port:user:pass#tag=lab" format the IP rotator accepts.
 std::optional<Upstream> parse_upstream(std::string_view text, std::string_view kind_hint = {});
 
 class Pool {

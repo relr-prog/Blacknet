@@ -7,7 +7,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { parsePorts, describe, rotationVerdict } = require("../src/main/rotator");
+const { parsePorts, describe, rotationVerdict } = require("../src/main/ipRotator");
 
 // The status payload shape the gateway actually returns, trimmed to what is read.
 function status(rows) {
@@ -34,7 +34,7 @@ function upstream(over = {}) {
 }
 
 const REAL_LINE =
-  "18:11:47 INFO    rotator          listening: http=127.0.0.1:8888 socks5=127.0.0.1:1080 status=127.0.0.1:9099 | upstreams=7 healthy=7";
+  "18:11:47 INFO    ipRotator          listening: http=127.0.0.1:8888 socks5=127.0.0.1:1080 status=127.0.0.1:9099 | upstreams=7 healthy=7";
 
 test("the gateway's listening line yields all three ports", () => {
   assert.deepEqual(parsePorts(REAL_LINE), {
@@ -60,7 +60,7 @@ test("a non-default port is read, not assumed", () => {
 });
 
 test("an unrelated log line is not mistaken for a listener", () => {
-  assert.equal(parsePorts("some other rotator log line"), null);
+  assert.equal(parsePorts("some other ipRotator log line"), null);
   assert.equal(parsePorts(""), null);
 });
 

@@ -1,4 +1,4 @@
-// Settings: appearance, browser colour, rotator switch.
+// Settings: appearance, browser colour, IP rotator switch.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -17,7 +17,7 @@ test("defaults are the agreed palette choices", () => {
   assert.equal(settings.get("scheme"), "auto");
   assert.equal(settings.get("background"), null, "null keeps the palette background");
   assert.equal(settings.get("accent"), null);
-  assert.equal(settings.get("rotatorEnabled"), false);
+  assert.equal(settings.get("ipRotatorEnabled"), false);
   assert.equal(settings.get("offerToSavePasswords"), true);
 });
 
@@ -59,31 +59,31 @@ test("a hand-edited file with junk falls back to defaults, not to garbage", () =
   assert.equal(settings.get("accent"), null);
 });
 
-test("rotatorEnabled cannot be flipped through patch()", () => {
+test("ipRotatorEnabled cannot be flipped through patch()", () => {
   const settings = tempSettings();
-  assert.equal(settings.patch({ rotatorEnabled: true }).rotatorEnabled, false);
+  assert.equal(settings.patch({ ipRotatorEnabled: true }).ipRotatorEnabled, false);
 });
 
-test("rotator state is recorded from the service, not from the UI", () => {
+test("IP rotator state is recorded from the service, not from the UI", () => {
   const settings = tempSettings();
-  const after = settings.setRotatorState({
+  const after = settings.setIPRotatorState({
     enabled: true,
     state: "running",
     detail: "3 upstreams",
   });
-  assert.equal(after.rotatorEnabled, true);
-  assert.equal(after.rotatorState, "running");
-  assert.equal(after.rotatorDetail, "3 upstreams");
+  assert.equal(after.ipRotatorEnabled, true);
+  assert.equal(after.ipRotatorState, "running");
+  assert.equal(after.ipRotatorDetail, "3 upstreams");
 
   const reloaded = new Settings({ userDataPath: settings.store.file.replace("/settings.json", "") });
-  assert.equal(reloaded.get("rotatorEnabled"), true);
+  assert.equal(reloaded.get("ipRotatorEnabled"), true);
 });
 
 test("details are length-capped so a chatty service cannot bloat the file", () => {
   const settings = tempSettings();
-  const after = settings.setRotatorState({ state: "x".repeat(80), detail: "y".repeat(900) });
-  assert.equal(after.rotatorState.length, 40);
-  assert.equal(after.rotatorDetail.length, 200);
+  const after = settings.setIPRotatorState({ state: "x".repeat(80), detail: "y".repeat(900) });
+  assert.equal(after.ipRotatorState.length, 40);
+  assert.equal(after.ipRotatorDetail.length, 200);
 });
 
 test("css variables only appear when a colour is actually set", () => {
@@ -132,7 +132,7 @@ test("subscribers are notified and can unsubscribe", () => {
   const off = settings.subscribe((values) => seen.push(values.scheme));
 
   settings.patch({ scheme: "dark" });
-  settings.setRotatorState({ enabled: true, state: "running" });
+  settings.setIPRotatorState({ enabled: true, state: "running" });
   off();
   settings.patch({ scheme: "light" });
 
@@ -155,7 +155,7 @@ test("a throwing subscriber does not stop the others", () => {
 // Settings are described in one table and every read and write goes through it.
 // The cases worth pinning are the ones where the old branch-per-key version
 // quietly disagreed with itself: a value invalid on disk but never re-checked, a
-// key the UI sent that nothing handled, and the rotator switch being writable
+// key the UI sent that nothing handled, and the IP rotator switch being writable
 // from the settings panel.
 
 test("every setting is described, and every description has a default", () => {
@@ -183,7 +183,7 @@ test("a value that is invalid on disk is fixed on read, not only on write", () =
       scheme: "ultraviolet",
       background: "#12345",
       showSettingsButton: "no",
-      rotatorDetail: 12345,
+      ipRotatorDetail: 12345,
       somethingRemoved: "from an older build",
     }),
   );
@@ -191,7 +191,7 @@ test("a value that is invalid on disk is fixed on read, not only on write", () =
   assert.equal(values.scheme, "auto");
   assert.equal(values.background, null);
   assert.equal(values.showSettingsButton, true, "an unreadable flag falls back to its default");
-  assert.equal(values.rotatorDetail, "");
+  assert.equal(values.ipRotatorDetail, "");
   assert.equal(
     Object.hasOwn(values, "somethingRemoved"),
     false,
@@ -222,31 +222,31 @@ test("an unknown key in a patch is ignored rather than written", () => {
   );
 });
 
-test("the settings UI cannot claim the rotator is on", () => {
-  // rotatorEnabled is written only by the rotator service reporting what it
+test("the settings UI cannot claim the IP rotator is on", () => {
+  // ipRotatorEnabled is written only by the IP rotator service reporting what it
   // actually did. A patch from a renderer that set it would paint a green "proxy
   // on" over a browser that is not proxying anything.
   const settings = tempSettings();
-  settings.setRotatorState({ enabled: false, state: "stopped" });
-  const updated = settings.patch({ rotatorEnabled: true, rotatorState: "running" });
-  assert.equal(updated.rotatorEnabled, false);
-  assert.equal(updated.rotatorState, "stopped");
+  settings.setIPRotatorState({ enabled: false, state: "stopped" });
+  const updated = settings.patch({ ipRotatorEnabled: true, ipRotatorState: "running" });
+  assert.equal(updated.ipRotatorEnabled, false);
+  assert.equal(updated.ipRotatorState, "stopped");
 
   // The service path still works, because that is the one that knows.
   assert.equal(
-    settings.setRotatorState({ enabled: true, state: "running" }).rotatorEnabled,
+    settings.setIPRotatorState({ enabled: true, state: "running" }).ipRotatorEnabled,
     true,
   );
 });
 
 test("an over-long detail string is truncated rather than stored whole", () => {
   const settings = tempSettings();
-  const updated = settings.setRotatorState({
+  const updated = settings.setIPRotatorState({
     enabled: true,
     state: "running",
     detail: "x".repeat(5000),
   });
-  assert.equal(updated.rotatorDetail.length, 200);
+  assert.equal(updated.ipRotatorDetail.length, 200);
 });
 
 test("every writable key survives a patch that sets it", () => {

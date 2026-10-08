@@ -39,7 +39,7 @@ std::string_view kind_name(UpstreamKind kind) {
         case UpstreamKind::Https: return "https";
         case UpstreamKind::Socks5: return "socks5";
         case UpstreamKind::Direct: return "direct";
-        case UpstreamKind::Tor: return "tor";
+        case UpstreamKind::Circuit: return "circuit";
     }
     return "http";
 }
@@ -50,7 +50,7 @@ std::optional<UpstreamKind> parse_kind(std::string_view text) {
     if (value == "https") return UpstreamKind::Https;
     if (value == "socks5" || value == "socks") return UpstreamKind::Socks5;
     if (value == "direct" || value == "none") return UpstreamKind::Direct;
-    if (value == "tor") return UpstreamKind::Tor;
+    if (value == "circuit") return UpstreamKind::Circuit;
     return std::nullopt;
 }
 
@@ -108,7 +108,7 @@ double Upstream::success_rate() const {
 
 std::string Upstream::display() const {
     if (kind == UpstreamKind::Direct) return "direct";
-    if (kind == UpstreamKind::Tor) return "tor:" + host + ":" + std::to_string(port);
+    if (kind == UpstreamKind::Circuit) return "circuit:" + host + ":" + std::to_string(port);
     std::string out = std::string(kind_name(kind)) + "://" + host + ":" + std::to_string(port);
     if (!username.empty()) out = std::string(kind_name(kind)) + "://" + username + ":***@" + host +
                                  ":" + std::to_string(port);
@@ -163,13 +163,13 @@ std::optional<Upstream> parse_upstream(std::string_view text, std::string_view k
         spec = spec.substr(scheme_end + 3);
     }
 
-    // bare kind names: "direct", "tor", "socks5" (port filled from defaults)
+    // bare kind names: "direct", "circuit", "socks5" (port filled from defaults)
     if (scheme.empty() && spec.find(':') == std::string::npos) {
         if (const std::optional<UpstreamKind> bare = parse_kind(spec); bare.has_value()) {
             Upstream named;
             named.kind = *bare;
             named.host = lower(spec);
-            named.port = named.kind == UpstreamKind::Tor ? 9050 : 0;
+            named.port = named.kind == UpstreamKind::Circuit ? 9050 : 0;
             named.tag = tag;
             named.id = std::string(kind_name(named.kind)) + "-" + to_hex(fnv1a(named.display()));
             return named;

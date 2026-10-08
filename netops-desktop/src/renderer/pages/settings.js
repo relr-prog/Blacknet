@@ -215,17 +215,17 @@ function defaultBackground(scheme) {
 
 async function renderNetwork() {
   settingsBody.replaceChildren();
-  const live = window.netops.rotator
-    ? unwrap(await window.netops.rotator.status())
-    : { rotatorEnabled: false, rotatorDetail: "", live: false };
+  const live = window.netops.ipRotator
+    ? unwrap(await window.netops.ipRotator.status())
+    : { ipRotatorEnabled: false, ipRotatorDetail: "", live: false };
 
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
-  toggle.id = "set-rotator";
-  toggle.checked = Boolean(live.rotatorEnabled);
+  toggle.id = "set-ipRotator";
+  toggle.checked = Boolean(live.ipRotatorEnabled);
   const toggleLabel = document.createElement("label");
   toggleLabel.className = "field";
-  toggleLabel.append(toggle, document.createTextNode("Use the proxy rotator"));
+  toggleLabel.append(toggle, document.createTextNode("Use the IP rotator"));
 
   toggle.addEventListener("change", async () => {
     // No administrator role is involved any more. The gateway is a child process
@@ -233,15 +233,15 @@ async function renderNetwork() {
     // already owns the machine, so the extra gate was the dashboard's rule leaking
     // into a desktop control it has nothing to do with.
     await run(async () => {
-      const updated = unwrap(await window.netops.rotator.set(toggle.checked));
-      toggle.checked = Boolean(updated.rotatorEnabled);
-      setStatus(updated.rotatorEnabled ? "Rotator on" : "Rotator off");
+      const updated = unwrap(await window.netops.ipRotator.set(toggle.checked));
+      toggle.checked = Boolean(updated.ipRotatorEnabled);
+      setStatus(updated.ipRotatorEnabled ? "IP Rotator on" : "IP Rotator off");
     });
   });
 
   settingsBody.append(
     row(
-      "Rotator",
+      "IP Rotator",
       toggleLabel,
       "Traffic is sent through the configured upstreams.",
     ),
@@ -249,7 +249,7 @@ async function renderNetwork() {
 
   const detail = document.createElement("p");
   detail.className = "mono";
-  detail.textContent = live.rotatorDetail || (live.live ? "no detail" : "gateway not running");
+  detail.textContent = live.ipRotatorDetail || (live.live ? "no detail" : "gateway not running");
   settingsBody.append(detail);
 }
 
@@ -681,15 +681,15 @@ async function renderPool() {
 // plane, which no longer exists - this panel now reports the one child process
 // the shell actually supervises.
 async function renderService() {
-  const status = unwrap(await window.netops.rotator.status());
+  const status = unwrap(await window.netops.ipRotator.status());
   panelBody.replaceChildren();
 
-  const pill = status.rotatorState === "running" ? "ok" : "bad";
+  const pill = status.ipRotatorState === "running" ? "ok" : "bad";
   const headline = document.createElement("p");
   const statePill = document.createElement("span");
   statePill.className = `pill ${pill}`;
-  statePill.textContent = String(status.rotatorState || "stopped");
-  headline.append(statePill, document.createTextNode(` ${status.rotatorDetail || ""}`));
+  statePill.textContent = String(status.ipRotatorState || "stopped");
+  headline.append(statePill, document.createTextNode(` ${status.ipRotatorDetail || ""}`));
   panelBody.append(headline);
 
   if (status.pool && status.pool.healthy) {

@@ -31,12 +31,12 @@ const LISTENING = /listening:\s*http=(\S+)\s+socks5=(\S+)\s+status=(\S+)/;
 
 function candidateHomes() {
   const homes = [];
-  if (process.env.ROTATOR_HOME) homes.push(process.env.ROTATOR_HOME);
+  if (process.env.IP_ROTATOR_HOME) homes.push(process.env.IP_ROTATOR_HOME);
   homes.push(path.join(os.homedir(), "projects", "proxy-rotator"));
   return homes;
 }
 
-function findRotatorProject() {
+function findIPRotatorProject() {
   for (const home of candidateHomes()) {
     const bin = path.join(home, ".venv", "bin", "rotator");
     const config = path.join(home, "rotator.toml");
@@ -88,7 +88,7 @@ function getJson(hostPort, path_, timeout = STATUS_TIMEOUT_MS) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-class RotatorService {
+class IPRotatorService {
   constructor({ log } = {}) {
     this.log = log || (() => {});
     this.child = null;
@@ -108,11 +108,11 @@ class RotatorService {
     this.wanted = true;
     if (this.child || this.state === "starting") return this.state;
 
-    this.project = findRotatorProject();
+    this.project = findIPRotatorProject();
     if (!this.project) {
       this.state = "unavailable";
-      this.detail = "no proxy-rotator checkout found (set ROTATOR_HOME)";
-      this.log(`[rotator] ${this.detail}`);
+      this.detail = "no proxy-rotator checkout found (set IP_ROTATOR_HOME)";
+      this.log(`[ip-rotator] ${this.detail}`);
       return this.state;
     }
 
@@ -130,7 +130,7 @@ class RotatorService {
         const ports = parsePorts(line);
         if (ports) this.ports = ports;
       }
-      this.log(`[rotator] ${line}`);
+      this.log(`[ip-rotator] ${line}`);
     };
     this.child.stdout.on("data", (chunk) => {
       for (const line of chunk.toString().split("\n")) if (line.trim()) onLine(line.trimEnd());
@@ -166,7 +166,7 @@ class RotatorService {
           const body = await getJson(this.ports.status, "/status");
           this.state = "running";
           this.detail = describe(body);
-          this.log(`[rotator] gateway ready on ${this.ports.http} | ${this.detail}`);
+          this.log(`[ip-rotator] gateway ready on ${this.ports.http} | ${this.detail}`);
           return this.state;
         } catch {
           // still coming up
@@ -211,7 +211,7 @@ class RotatorService {
   }
 
   // The proxy Chromium should use, or null when the gateway is not up. This is
-  // what replaces the control plane's rotator for tabs.
+  // what replaces the control plane's IP rotator for tabs.
   proxy() {
     if (this.state !== "running" || !this.ports.http) return null;
     return `http://${this.ports.http}`;
@@ -232,7 +232,7 @@ class RotatorService {
     };
   }
 
-  // Pool health straight from the gateway, for the rotator switch and the
+  // Pool health straight from the gateway, for the IP rotator switch and the
   // settings view. Returns null when the gateway is not answering.
   async snapshot() {
     if (this.state !== "running" || !this.ports.status) return null;
@@ -342,8 +342,8 @@ function describe(body) {
 }
 
 module.exports = {
-  RotatorService,
-  findRotatorProject,
+  IPRotatorService,
+  findIPRotatorProject,
   parsePorts,
   describe,
   rotationVerdict,

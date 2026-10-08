@@ -13,8 +13,8 @@ function tempFile(name = "settings.json") {
 }
 
 test("missing file yields the defaults", () => {
-  const store = new JsonStore(tempFile(), { scheme: "auto", rotator: false });
-  assert.deepEqual(store.all(), { scheme: "auto", rotator: false });
+  const store = new JsonStore(tempFile(), { scheme: "auto", ipRotator: false });
+  assert.deepEqual(store.all(), { scheme: "auto", ipRotator: false });
 });
 
 test("set and get survive a reload", () => {

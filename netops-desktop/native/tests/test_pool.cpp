@@ -20,7 +20,7 @@ std::vector<Upstream> make_pool(const std::vector<std::string>& specs) {
 Pool two_tier_pool() {
     Pool pool;
     pool.add_tier("lab", Strategy::RoundRobin, make_pool({"1.1.1.1:8080#tag=a", "1.1.1.2:8080#tag=b"}));
-    pool.add_tier("backup", Strategy::Failover, make_pool({"2.2.2.2:1080#tag=tor"}));
+    pool.add_tier("backup", Strategy::Failover, make_pool({"2.2.2.2:1080#tag=circuit"}));
     return pool;
 }
 
@@ -33,15 +33,15 @@ NETOPS_TEST(pool_parses_upstream_formats) {
     EXPECT_EQ(plain->port, std::uint16_t{8080});
     EXPECT_EQ(plain->kind, UpstreamKind::Http);
 
-    const auto authed = parse_upstream("socks5://user:pass@127.0.0.1:1080#tag=tor");
+    const auto authed = parse_upstream("socks5://user:pass@127.0.0.1:1080#tag=circuit");
     EXPECT_EQ(authed->kind, UpstreamKind::Socks5);
     EXPECT_EQ(authed->username, std::string("user"));
     EXPECT_EQ(authed->password, std::string("pass"));
-    EXPECT_EQ(authed->tag, std::string("tor"));
+    EXPECT_EQ(authed->tag, std::string("circuit"));
 
-    const auto tor = parse_upstream("tor#tag=local");
-    EXPECT_EQ(tor->kind, UpstreamKind::Tor);
-    EXPECT_EQ(tor->tag, std::string("local"));
+    const auto circuit = parse_upstream("circuit#tag=local");
+    EXPECT_EQ(circuit->kind, UpstreamKind::Circuit);
+    EXPECT_EQ(circuit->tag, std::string("local"));
 
     const auto direct = parse_upstream("direct");
     EXPECT_EQ(direct->kind, UpstreamKind::Direct);

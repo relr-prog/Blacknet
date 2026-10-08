@@ -1,6 +1,6 @@
-// The privileged action map: rotator control without a control plane.
+// The privileged action map: IP rotator control without a control plane.
 //
-// The rotator used to be an HTTP route on the Python control plane, so these
+// The IP rotator used to be an HTTP route on the Python control plane, so these
 // tests asserted on cookie forwarding and dashboard-admin gating. It is now a
 // child process supervised by the shell, which deletes both concerns at once:
 // there is no request to leak a cookie into, and flipping a local proxy is not a
@@ -15,7 +15,7 @@ const { test } = require("node:test");
 const { createActions } = require("../src/main/actions");
 const { Settings } = require("../src/main/settings");
 
-function fakeRotator({ state = "running", proxy = "http://127.0.0.1:8888", detail = "5/7 upstreams healthy" } = {}) {
+function fakeIPRotator({ state = "running", proxy = "http://127.0.0.1:8888", detail = "5/7 upstreams healthy" } = {}) {
   const calls = { start: 0, stop: 0, snapshot: 0, refresh: 0 };
   return {
     calls,
@@ -46,10 +46,10 @@ function fakeRotator({ state = "running", proxy = "http://127.0.0.1:8888", detai
   };
 }
 
-function harness(rotatorOptions = {}) {
+function harness(ipRotatorOptions = {}) {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
   const settings = new Settings({ userDataPath });
-  const rotator = fakeRotator(rotatorOptions);
+  const ipRotator = fakeIPRotator(ipRotatorOptions);
   const refreshed = { count: 0 };
   const tabs = {
     sessionCookies: async () => [],
@@ -57,48 +57,48 @@ function harness(rotatorOptions = {}) {
       refreshed.count += 1;
     },
   };
-  const actions = createActions({ tabs, settings, rotator });
-  return { actions, settings, rotator, refreshed };
+  const actions = createActions({ tabs, settings, ipRotator });
+  return { actions, settings, ipRotator, refreshed };
 }
 
-test("turning the rotator on starts the gateway", async () => {
-  const { actions, rotator } = harness();
-  const result = await actions["netops:rotator:set"](true);
-  assert.equal(rotator.calls.start, 1);
-  assert.equal(rotator.calls.stop, 0);
-  assert.equal(result.rotatorEnabled, true);
-  assert.equal(result.rotatorState, "running");
+test("turning the IP rotator on starts the gateway", async () => {
+  const { actions, ipRotator } = harness();
+  const result = await actions["netops:ip-rotator:set"](true);
+  assert.equal(ipRotator.calls.start, 1);
+  assert.equal(ipRotator.calls.stop, 0);
+  assert.equal(result.ipRotatorEnabled, true);
+  assert.equal(result.ipRotatorState, "running");
 });
 
-test("turning the rotator off stops the gateway", async () => {
-  const { actions, rotator, settings } = harness();
-  await actions["netops:rotator:set"](false);
-  assert.equal(rotator.calls.stop, 1);
-  assert.equal(rotator.calls.start, 0);
-  assert.equal(settings.get("rotatorEnabled"), false);
-  assert.equal(settings.get("rotatorState"), "stopped");
+test("turning the IP rotator off stops the gateway", async () => {
+  const { actions, ipRotator, settings } = harness();
+  await actions["netops:ip-rotator:set"](false);
+  assert.equal(ipRotator.calls.stop, 1);
+  assert.equal(ipRotator.calls.start, 0);
+  assert.equal(settings.get("ipRotatorEnabled"), false);
+  assert.equal(settings.get("ipRotatorState"), "stopped");
 });
 
-test("a guest can move the rotator because it is a local proxy switch", async () => {
+test("a guest can move the IP rotator because it is a local proxy switch", async () => {
   // No dashboard, no administrator role, no session cookie: the operator already
   // owns the machine. What must still hold is that the gateway is consulted.
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
   const settings = new Settings({ userDataPath });
-  const rotator = fakeRotator();
+  const ipRotator = fakeIPRotator();
   const actions = createActions({
     tabs: { sessionCookies: async () => [] },
     settings,
     account: { current: { authenticated: false, guest: true, isAdmin: false } },
-    rotator,
+    ipRotator,
   });
-  await actions["netops:rotator:set"](true);
-  assert.equal(rotator.calls.start, 1);
+  await actions["netops:ip-rotator:set"](true);
+  assert.equal(ipRotator.calls.start, 1);
 });
 
-test("no session cookie is read for the rotator at all", async () => {
+test("no session cookie is read for the IP rotator at all", async () => {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
   const settings = new Settings({ userDataPath });
-  const rotator = fakeRotator();
+  const ipRotator = fakeIPRotator();
   let cookieReads = 0;
   const actions = createActions({
     tabs: {
@@ -108,61 +108,61 @@ test("no session cookie is read for the rotator at all", async () => {
       },
     },
     settings,
-    rotator,
+    ipRotator,
   });
-  await actions["netops:rotator:set"](true);
-  await actions["netops:rotator:status"]();
-  assert.equal(cookieReads, 0, "the rotator path must not touch the cookie jar");
+  await actions["netops:ip-rotator:set"](true);
+  await actions["netops:ip-rotator:status"]();
+  assert.equal(cookieReads, 0, "the ipRotator path must not touch the cookie jar");
 });
 
-test("toggling the rotator re-points every tab at the new proxy", async () => {
+test("toggling the IP rotator re-points every tab at the new proxy", async () => {
   const { actions, refreshed } = harness();
-  await actions["netops:rotator:set"](true);
+  await actions["netops:ip-rotator:set"](true);
   assert.equal(refreshed.count, 1);
 });
 
-test("rotator status mirrors live pool health into settings", async () => {
+test("IP rotator status mirrors live pool health into settings", async () => {
   const { actions, settings } = harness();
-  const status = await actions["netops:rotator:status"]();
+  const status = await actions["netops:ip-rotator:status"]();
   assert.equal(status.live, true);
-  assert.equal(status.rotatorEnabled, true);
-  assert.equal(status.rotatorDetail, "5/7 upstreams healthy");
-  assert.equal(settings.get("rotatorDetail"), "5/7 upstreams healthy");
+  assert.equal(status.ipRotatorEnabled, true);
+  assert.equal(status.ipRotatorDetail, "5/7 upstreams healthy");
+  assert.equal(settings.get("ipRotatorDetail"), "5/7 upstreams healthy");
   assert.equal(status.pool.healthy, 5);
   assert.equal(status.pool.upstreams, 7);
 });
 
 test("a gateway that is listening with nothing healthy says so", async () => {
   const { actions } = harness({ state: "running", detail: "no healthy upstreams (7 configured)" });
-  const status = await actions["netops:rotator:status"]();
-  assert.match(status.rotatorDetail, /no healthy upstreams/);
+  const status = await actions["netops:ip-rotator:status"]();
+  assert.match(status.ipRotatorDetail, /no healthy upstreams/);
 });
 
-test("rotator status degrades to the last known state when the gateway is down", async () => {
+test("IP rotator status degrades to the last known state when the gateway is down", async () => {
   // A gateway that stopped answering: snapshot() returns null while status()
   // still reports the state the process is actually in.
   const { actions } = harness({ state: "crashed" });
-  const status = await actions["netops:rotator:status"]();
+  const status = await actions["netops:ip-rotator:status"]();
   assert.equal(status.live, false);
-  assert.equal(status.rotatorState, "crashed");
-  assert.equal(status.rotatorEnabled, false);
+  assert.equal(status.ipRotatorState, "crashed");
+  assert.equal(status.ipRotatorEnabled, false);
 });
 
 test("adminOnly is false: there is no dashboard role left to mirror", async () => {
   const { actions, settings } = harness();
-  await actions["netops:rotator:status"]();
-  assert.equal(settings.get("rotatorAdminOnly"), false);
+  await actions["netops:ip-rotator:status"]();
+  assert.equal(settings.get("ipRotatorAdminOnly"), false);
 });
 
-test("no rotator service means no rotator actions at all", () => {
+test("no IP rotator service means no IP rotator actions at all", () => {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "blacknet-actions-"));
   const actions = createActions({
     tabs: { sessionCookies: async () => [] },
     settings: new Settings({ userDataPath }),
     account: { current: { authenticated: true, isAdmin: true } },
   });
-  assert.equal(actions["netops:rotator:set"], undefined);
-  assert.equal(actions["netops:rotator:status"], undefined);
+  assert.equal(actions["netops:ip-rotator:set"], undefined);
+  assert.equal(actions["netops:ip-rotator:status"], undefined);
 });
 
 test("the internal-page action passes the name and options straight through", () => {

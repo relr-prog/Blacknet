@@ -130,14 +130,30 @@ async function pageState(view) {
   }))()`);
 }
 
-// Reads what a crashed tab is actually showing. The crash page is rendered by a
-// script of its own, so its text is the only honest evidence that the page works
-// rather than merely loading.
-async function crashPageText(view) {
+// Reads what a tab is actually showing when the shell rendered it: the crash
+// page and the refusal page are both built by a script of their own, so their
+// text is the only honest evidence that the page works rather than merely
+// loading. Loading is not the claim - what it says is.
+async function pageBodyText(view) {
   try {
     return await view.webContents.executeJavaScript("document.body.innerText");
   } catch (error) {
     return `unreadable: ${error.message}`;
+  }
+}
+
+// Waits for the page to say the thing being tested, rather than sleeping and
+// hoping: the claim is about the text, so the wait is about the text too.
+// Returns whatever it last read, so a check that fails can show what was there
+// instead of "timed out".
+async function waitForText(view, pattern, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = "";
+  for (;;) {
+    last = await pageBodyText(view);
+    if (pattern.test(last)) return last;
+    if (Date.now() >= deadline) return last;
+    await sleep(200);
   }
 }
 
@@ -484,10 +500,10 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     // documentation addresses, so nothing behind it can be healthy - which makes
     // this the honest case to test: a listening gateway with no working upstreams
     // must not read as a working proxy.
-    const started = await call("netops:rotator:set", true);
+    const started = await call("netops:ip-rotator:set", true);
     let gateway = null;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      gateway = await call("netops:rotator:status");
+      gateway = await call("netops:ip-rotator:status");
       if (gateway && gateway.live) break;
       await sleep(400);
     }
@@ -508,10 +524,10 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       check(
         "the gateway starts",
         false,
-        `state ${gateway && gateway.rotatorState}, detail ${gateway && gateway.rotatorDetail}`,
+        `state ${gateway && gateway.ipRotatorState}, detail ${gateway && gateway.ipRotatorDetail}`,
       );
     }
-    await call("netops:rotator:set", false);
+    await call("netops:ip-rotator:set", false);
     await pageView.webContents.executeJavaScript(
       `document.querySelector('#panel nav button[data-view="report"]').click()`,
     );
@@ -573,8 +589,8 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const settings = await call("netops:settings:read");
     check(
       "settings readable",
-      settings && typeof settings.scheme === "string" && typeof settings.rotatorEnabled === "boolean",
-      `scheme ${settings && settings.scheme}, rotator ${settings && settings.rotatorEnabled}`,
+      settings && typeof settings.scheme === "string" && typeof settings.ipRotatorEnabled === "boolean",
+      `scheme ${settings && settings.scheme}, ip rotator ${settings && settings.ipRotatorEnabled}`,
     );
 
     const savedLook = await call("netops:settings:write", { scheme: "light", background: "#101010" });
@@ -582,19 +598,19 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const rereadLook = await call("netops:settings:read");
     check("settings persisted", rereadLook.scheme === "light" && rereadLook.background === "#101010");
 
-    // The rotator is a child process now, not a server route. Asking for status
+    // The IP rotator is a child process now, not a server route. Asking for status
     // while it is off must answer from local state rather than hang or throw, and
     // it must not claim to be live.
-    const rotatorOff = await call("netops:rotator:status");
+    const ipRotatorOff = await call("netops:ip-rotator:status");
     check(
-      "rotator status answers without a control plane",
-      rotatorOff && rotatorOff.live === false && rotatorOff.rotatorEnabled === false,
-      `state ${rotatorOff && rotatorOff.rotatorState}, detail ${rotatorOff && rotatorOff.rotatorDetail}`,
+      "ipRotator status answers without a control plane",
+      ipRotatorOff && ipRotatorOff.live === false && ipRotatorOff.ipRotatorEnabled === false,
+      `state ${ipRotatorOff && ipRotatorOff.ipRotatorState}, detail ${ipRotatorOff && ipRotatorOff.ipRotatorDetail}`,
     );
-    const rotatorRestarted = await call("netops:rotator:set", false);
+    const ipRotatorRestarted = await call("netops:ip-rotator:set", false);
     check(
-      "rotator can be stopped idempotently",
-      rotatorRestarted && rotatorRestarted.rotatorEnabled === false,
+      "ipRotator can be stopped idempotently",
+      ipRotatorRestarted && ipRotatorRestarted.ipRotatorEnabled === false,
     );
 
     const badColour = await call("netops:settings:write", { background: "javascript:alert(1)" });
@@ -661,16 +677,16 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       revealed === null || revealed.password === undefined,
     );
 
-    // The rotator switch used to be admin-only over HTTP. It is a local preference
+    // The IP rotator switch used to be admin-only over HTTP. It is a local preference
     // now, so it must succeed here rather than refusing a role that no longer
     // exists - and it must not leave a gateway running if it fails.
-    let rotatorError = "";
+    let ipRotatorError = "";
     try {
-      await call("netops:rotator:set", false);
+      await call("netops:ip-rotator:set", false);
     } catch (error) {
-      rotatorError = error.message;
+      ipRotatorError = error.message;
     }
-    check("rotator switch is a local preference, not an admin action", rotatorError === "", rotatorError);
+    check("IP rotator switch is a local preference, not an admin action", ipRotatorError === "", ipRotatorError);
 
     // The password hook must never be attached to a page in this state, and the
     // capture path must refuse the report rather than store anything.
@@ -954,7 +970,7 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const crashState = (await call("netops:tabs:list")).find(
       (entry) => entry.id === crashProbe.id,
     );
-    const crashDetail = await crashPageText(getViews().tab(crashProbe.id));
+    const crashDetail = await pageBodyText(getViews().tab(crashProbe.id));
     const recordedReason = String((crashState && crashState.crashReason) || "crashed");
     const recordedCode = String((crashState && crashState.crashExitCode) ?? "");
     check(
@@ -966,6 +982,96 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
         !/\bunknown\b/.test(crashDetail),
       `recorded ${recordedReason}/${recordedCode}, page shows ${crashDetail.replace(/\s+/g, " ").slice(0, 70)}`,
     );
+
+    // A name this browser refuses has to land on the shell's own explanation,
+    // with the address that was asked for still in the address bar - not on a
+    // Chromium error the shell never chose, and not on a refusal that threw and
+    // left the operator with a tab that will not open.
+    const refused = await call("netops:tabs:create", { url: "http://blacknet-smoke.onion/" });
+    const refusedView = getViews().tab(refused.id);
+    // The text is what is being tested, so the wait is for the text.
+    const refusedText = await waitForText(refusedView, /This site can't be reached/);
+    const refusedEntry = (await call("netops:tabs:list")).find((tab) => tab.id === refused.id);
+    check(
+      "a refused address stays in the address bar",
+      Boolean(refusedEntry) && refusedEntry.url === "http://blacknet-smoke.onion/",
+      refusedEntry ? `url ${refusedEntry.url}` : "tab gone",
+    );
+    check(
+      "a refused address names its tab after the site",
+      Boolean(refusedEntry) && refusedEntry.title === "blacknet-smoke.onion",
+      refusedEntry ? `title ${refusedEntry.title}` : "tab gone",
+    );
+    check(
+      "a refused address gets the explanation, not a raw error",
+      /This site can't be reached/.test(refusedText)
+        && /blacknet-smoke\.onion's server IP address could not be found\./.test(refusedText),
+      refusedText.replace(/\s+/g, " ").slice(0, 90),
+    );
+
+    // Reload on that page has to retry the address rather than the file the
+    // explanation is painted from: a button that only reloads itself is a
+    // button the operator presses forever, which is the loop the crash page's
+    // own hint warns about. The load that follows the click is waited for by
+    // name - a click that does nothing would leave no event, which is the
+    // failure this check is here to catch.
+    const refusedWc = refusedView.webContents;
+    const reloadFinished = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 8000);
+      refusedWc.once("did-finish-load", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+    await refusedWc.executeJavaScript("document.getElementById('reload').click()");
+    const reloadLanded = await reloadFinished;
+    const afterReloadText = await pageBodyText(refusedView);
+    const afterReloadEntry = (await call("netops:tabs:list")).find((tab) => tab.id === refused.id);
+    check(
+      "reload on the explanation retries the address and keeps it",
+      reloadLanded
+        && /This site can't be reached/.test(afterReloadText)
+        && Boolean(afterReloadEntry)
+        && afterReloadEntry.url === "http://blacknet-smoke.onion/",
+      afterReloadEntry
+        ? `url ${afterReloadEntry.url}, reloaded=${reloadLanded}`
+        : "tab gone",
+    );
+    await call("netops:tabs:close", refused.id);
+
+    // The same refusal reached by following a link instead of typing it: the
+    // request filter sees the navigation before Chromium builds it, so the tab
+    // must end on the same explanation. And a refused name is not a tracker
+    // hit, so the badge must not have counted it either - the count is what the
+    // privacy report shows the operator, and a name in that family would be
+    // listed there as if it were an ad.
+    const linkTab = await call("netops:tabs:create");
+    const linkView = getViews().tab(linkTab.id);
+    const linkPage = "data:text/html;charset=utf-8,"
+      + encodeURIComponent(
+        "<!doctype html><title>Link probe</title>"
+          + '<a id="go" href="http://link-smoke.onion/">go</a>',
+      );
+    await linkView.webContents.loadURL(linkPage);
+    await waitForLoad(linkView);
+    await waitForLoad(linkView);
+    await linkView.webContents.executeJavaScript("document.getElementById('go').click()");
+    const linkText = await waitForText(linkView, /This site can't be reached/);
+    const linkEntry = (await call("netops:tabs:list")).find((tab) => tab.id === linkTab.id);
+    check(
+      "following a refused link lands on the explanation too",
+      Boolean(linkEntry)
+        && linkEntry.url === "http://link-smoke.onion/"
+        && /This site can't be reached/.test(linkText),
+      linkEntry ? `url ${linkEntry.url}, text ${linkText.replace(/\s+/g, " ").slice(0, 60)}` : "tab gone",
+    );
+    const linkReport = await call("netops:privacy:report", linkTab.id);
+    check(
+      "a refused address is not counted as a blocked tracker",
+      (linkReport.blocked || 0) === 0,
+      `${linkReport.blocked} blocked`,
+    );
+    await call("netops:tabs:close", linkTab.id);
 
     // Maximizing must carry the chrome and the page with it. Electron emits
     // "resize" before the new content size is committed, so a synchronous layout

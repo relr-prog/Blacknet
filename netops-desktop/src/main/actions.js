@@ -13,23 +13,23 @@
 
 const { detectAudio } = require("./audio");
 
-// The rotator is admin-only in the control plane. This mirrors that rule in the
+// The IP rotator is admin-only in the control plane. This mirrors that rule in the
 // shell so a guest switch is refused before a request is made, and the UI can
 // explain why without a round trip.
 //
-// The rotator is a child process now, not a server route, so there is no session
+// The IP rotator is a child process now, not a server route, so there is no session
 // cookie and no HTTP round trip. The gateway itself is the source of truth for
 // whether it is running; the stored preference only mirrors it for the next
 // paint. Flipping the proxy is a local desktop action, so it is no longer gated
 // on a dashboard administrator session - the operator already owns the machine.
-function rotatorAction(settings, rotator, tabs) {
+function ipRotatorAction(settings, ipRotator, tabs) {
   return async function (enabled) {
-    if (!rotator) throw new Error("the rotator is not available");
+    if (!ipRotator) throw new Error("the IP rotator is not available");
     const want = Boolean(enabled);
-    const state = want ? await rotator.start() : await rotator.stop();
-    const live = await rotator.snapshot();
-    const status = rotator.status();
-    settings.setRotatorState({
+    const state = want ? await ipRotator.start() : await ipRotator.stop();
+    const live = await ipRotator.snapshot();
+    const status = ipRotator.status();
+    settings.setIPRotatorState({
       enabled: state === "running",
       state,
       detail: live ? live.detail : status.detail,
@@ -40,12 +40,12 @@ function rotatorAction(settings, rotator, tabs) {
   };
 }
 
-async function rotatorStatus(settings, rotator) {
+async function ipRotatorStatus(settings, ipRotator) {
   const stored = settings.all();
-  if (!rotator) return { ...stored, live: false };
-  const live = await rotator.snapshot();
-  const status = rotator.status();
-  settings.setRotatorState({
+  if (!ipRotator) return { ...stored, live: false };
+  const live = await ipRotator.snapshot();
+  const status = ipRotator.status();
+  settings.setIPRotatorState({
     enabled: status.state === "running",
     state: status.state,
     detail: live ? live.detail : status.detail,
@@ -54,7 +54,7 @@ async function rotatorStatus(settings, rotator) {
   return { ...settings.all(), live: Boolean(live), pool: live };
 }
 
-function createActions({ core, tabs, clipboard, settings, identity, passwords, rotator, sessionStore }) {
+function createActions({ core, tabs, clipboard, settings, identity, passwords, ipRotator, sessionStore }) {
   const actions = {
     // --- tabs -------------------------------------------------------------
     "netops:tabs:list": () => tabs.list(),
@@ -153,9 +153,9 @@ function identityAction(settings, identity, passwords) {
     actions["netops:account:status"] = profile.status;
   }
 
-  if (rotator) {
-    actions["netops:rotator:status"] = () => rotatorStatus(settings, rotator);
-    actions["netops:rotator:set"] = rotatorAction(settings, rotator, tabs);
+  if (ipRotator) {
+    actions["netops:ip-rotator:status"] = () => ipRotatorStatus(settings, ipRotator);
+    actions["netops:ip-rotator:set"] = ipRotatorAction(settings, ipRotator, tabs);
   }
 
   if (passwords) {

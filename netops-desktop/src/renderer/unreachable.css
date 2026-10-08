@@ -1,0 +1,70 @@
+/* Tokens come from chrome.css (palette.css), which this page already loads. */
+body.unreachable {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px;
+  color: var(--text);
+  background: var(--bg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.unreachable main {
+  max-width: 34rem;
+}
+
+body.unreachable .logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.9rem;
+  opacity: 0.9;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+body.unreachable h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  color: var(--warn);
+}
+
+body.unreachable .reason {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+body.unreachable .code {
+  margin: 0 0 1rem;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+body.unreachable .hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+body.unreachable button {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+body.unreachable button:hover {
+  background: var(--raised);
+}
+
+body.unreachable button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

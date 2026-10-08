@@ -60,17 +60,17 @@ contextBridge.exposeInMainWorld("netops", {
   logs: () => ipcRenderer.invoke("netops:logs"),
   openExternal: (url) => ipcRenderer.invoke("netops:open-external", url),
 
-  // --- rotator -------------------------------------------------------------
+  // --- IP rotator -------------------------------------------------------------
   // A local action on a child process this shell started. There is no dashboard
   // role to check, because there is no dashboard: the operator already owns the
   // machine, and an "administrator" gate here would have protected nothing.
-  rotator: {
-    status: () => ipcRenderer.invoke("netops:rotator:status"),
-    set: (enabled) => ipcRenderer.invoke("netops:rotator:set", Boolean(enabled)),
+  ipRotator: {
+    status: () => ipcRenderer.invoke("netops:ip-rotator:status"),
+    set: (enabled) => ipcRenderer.invoke("netops:ip-rotator:set", Boolean(enabled)),
   },
 
   // --- settings ------------------------------------------------------------
-  // Appearance, browser colour and the rotator switch. Reads never need an
+  // Appearance, browser colour and the IP rotator switch. Reads never need an
   // argument; writes take a partial patch and are validated in main.
   settings: {
     read: () => ipcRenderer.invoke("netops:settings:read"),

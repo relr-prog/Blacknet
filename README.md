@@ -37,9 +37,10 @@ machine for; it never needed a second language runtime to do it.
 | OS step-up: Windows Hello + DPAPI, macOS Touch ID, Linux sudo | Implemented. Windows and Linux paths are hard to verify in a headless environment |
 | Session restore | Working. Stores URLs and the active tab, nothing else; opt out in Settings |
 | Settings schema | One typed table; reads and writes validated identically |
+| `.onion` addresses refused before any request | Working. The tab keeps the address and shows a "site can't be reached" page; the rule is main-process knowledge and is never put on the IPC map |
 
-Not built, and not pretending to be: per-site fingerprint profiles, Tor/I2P,
-request rewriting, a shared fingerprint marketplace, any AI layer.
+Not built, and not pretending to be: per-site fingerprint profiles, request
+rewriting, a shared fingerprint marketplace, any AI layer.
 
 ## Proxy credentials
 
@@ -116,8 +117,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (231)
-npm run smoke                  # real Electron window, headless, 94 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (254)
+npm run smoke                  # real Electron window, headless, 100 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

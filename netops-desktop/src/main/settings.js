@@ -1,10 +1,10 @@
 "use strict";
 
-// Browser settings: appearance, browser colour and the rotator switch.
+// Browser settings: appearance, browser colour and the IP rotator switch.
 //
 // Storage is local to the shell (<userData>/settings.json) rather than in the
 // control plane's database, because these are per-machine browser preferences -
-// the same person may run BlackNet with the rotator on one profile and off on
+// the same person may run BlackNet with the IP rotator on one profile and off on
 // another. Anything that is an *account* fact (role, guest) comes from
 // account.js instead.
 //
@@ -45,14 +45,14 @@ const SCHEMA = {
   restoreSession: { type: "bool", default: true },
 
   // --- written by the shell, not the operator --------------------------------
-  // Rotator master switch: false means "direct connection", whatever the pool
-  // says. The last known rotator state is remembered for display only. Not
-  // writable: flipping the rotator is an action on the rotator service, not a
+  // IP Rotator master switch: false means "direct connection", whatever the pool
+  // says. The last known IP rotator state is remembered for display only. Not
+  // writable: flipping the IP rotator is an action on the IP rotator service, not a
   // preference, and the UI must not be able to claim a proxy is on when it is off.
-  rotatorEnabled: { type: "bool", default: false, writable: false },
-  rotatorState: { type: "text", maxLength: 40, default: "unknown", writable: false },
-  rotatorDetail: { type: "text", maxLength: 200, default: "", writable: false },
-  rotatorAdminOnly: { type: "bool", default: false, writable: false },
+  ipRotatorEnabled: { type: "bool", default: false, writable: false },
+  ipRotatorState: { type: "text", maxLength: 40, default: "unknown", writable: false },
+  ipRotatorDetail: { type: "text", maxLength: 200, default: "", writable: false },
+  ipRotatorAdminOnly: { type: "bool", default: false, writable: false },
 };
 
 const DEFAULTS = Object.fromEntries(
@@ -167,14 +167,14 @@ class Settings {
     return this.all();
   }
 
-  setRotatorState({ enabled, state, detail = "", adminOnly = false }) {
+  setIPRotatorState({ enabled, state, detail = "", adminOnly = false }) {
     this.#store.patch(
       coerceAll({
         ...this.#store.all(),
-        rotatorEnabled: enabled,
-        rotatorState: state,
-        rotatorDetail: detail,
-        rotatorAdminOnly: adminOnly,
+        ipRotatorEnabled: enabled,
+        ipRotatorState: state,
+        ipRotatorDetail: detail,
+        ipRotatorAdminOnly: adminOnly,
       }),
     );
     this.#notify();

@@ -21,7 +21,7 @@ const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
 const { PasswordManager } = require("./credentials");
 const { PasswordWatcher } = require("./passwordWatcher");
-const { RotatorService } = require("./rotator");
+const { IPRotatorService } = require("./ipRotator");
 
 const logLines = [];
 // How often the shell re-checks the session cookie. The dashboard can change the
@@ -47,7 +47,7 @@ let identity = null;
 let reauth = null;
 let passwords = null;
 let watcher = null;
-let rotator = null;
+let ipRotator = null;
 let sessionStore = null;
 
 // The shape the password manager expects for copying. It used to hang off the
@@ -103,7 +103,7 @@ function buildFeatureModules(userData, browserConfig) {
   // The gateway is its own process now, supervised directly by the shell. It is
   // deliberately not routed through the control plane: a browser should not need
   // a second language runtime and a localhost web server to switch a proxy on.
-  rotator = new RotatorService({ log });
+  ipRotator = new IPRotatorService({ log });
 
   identity = new Identity({ userDataPath: userData, log });
   const profile = identity.ensure();
@@ -206,7 +206,7 @@ async function createWindow() {
     log,
     captureEnabled,
     send: sendToChrome,
-    rotator,
+    ipRotator,
   });
   // Written as tabs are created and navigated, and read once here on launch. It is
   // handed to the tab manager rather than managed here so there is a single place
@@ -369,7 +369,7 @@ clipboard: clipboardBridge,
       settings,
       identity,
       passwords,
-      rotator,
+      ipRotator,
       sessionStore,
     }),
     "netops:open-external": async (url) => {
@@ -468,21 +468,21 @@ if (!app.requestSingleInstanceLock()) {
     await createWindow();
     buildMenu();
 
-    // Restore the rotator preference from the last run. The window is already
+    // Restore the IP rotator preference from the last run. The window is already
     // usable by now, so a slow gateway start never delays first paint.
-    if (settings.get("rotatorEnabled")) {
-      rotator
+    if (settings.get("ipRotatorEnabled")) {
+      ipRotator
         .start()
         .then((state) => {
-          settings.setRotatorState({
+          settings.setIPRotatorState({
             enabled: state === "running",
             state,
-            detail: rotator.status().detail,
+            detail: ipRotator.status().detail,
             adminOnly: false,
           });
           tabs.refreshProxy();
         })
-        .catch((error) => log(`rotator: ${error.message}`));
+        .catch((error) => log(`ip-rotator: ${error.message}`));
     }
 
     if (process.argv.includes("--smoke")) {
@@ -518,11 +518,11 @@ function quit(code = 0) {
 }
 
 app.on("before-quit", (event) => {
-  if (quitting || !rotator || !rotator.child) return;
+  if (quitting || !ipRotator || !ipRotator.child) return;
   event.preventDefault();
-  rotator
+  ipRotator
     .stop()
-    .catch((error) => log(`rotator: ${error.message}`))
+    .catch((error) => log(`ip-rotator: ${error.message}`))
     .finally(() => {
       quitting = true;
       app.exit(exitCode);
