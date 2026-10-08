@@ -9,4 +9,5 @@
     <color name="accent">#569CD6</color>
     <color name="accent_ink">#0C1622</color>
     <color name="warn">#D6B24C</color>
+    <color name="button_disabled">#4DE1E4EA</color>
 </resources>

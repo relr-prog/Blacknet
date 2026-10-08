@@ -5,7 +5,7 @@
         <item name="android:layout_height">44dp</item>
         <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
         <item name="android:scaleType">center</item>
-        <item name="android:tint">@color/text</item>
+        <item name="android:tint">@color/button_icon_tint</item>
     </style>
 
     <style name="Widget.App.Nav.Button" parent="Widget.AppCompat.ImageButton">
@@ -14,6 +14,6 @@
         <item name="android:layout_weight">1</item>
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:scaleType">center</item>
-        <item name="android:tint">@color/text</item>
+        <item name="android:tint">@color/button_icon_tint</item>
     </style>
 </resources>
