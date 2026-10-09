@@ -34,11 +34,25 @@
           placeholder="Search or type an address"
         />
         <span id="status" aria-live="polite"></span>
+        <button
+          type="button"
+          id="star"
+          class="star"
+          title="Bookmark this tab"
+          aria-label="Bookmark this tab"
+        >
+          &#9734;
+        </button>
       </div>
 
       <button type="button" id="inspect" title="Privacy report">Privacy</button>
       <button type="button" id="settings-btn" title="Settings" aria-label="Settings">Settings</button>
     </form>
+
+    <!-- The bookmarks bar. Hidden until there is a bookmark to show, and the
+         chrome reports its own height so the page below starts at the right
+         place whether or not this row is on screen. -->
+    <div id="bookmarksbar" role="toolbar" aria-label="Bookmarks" hidden></div>
 
     <!-- Settings and Privacy used to be dialogs here. They now open as a page of
          the shell in an ordinary tab (renderer/pages/settings.html), so nothing

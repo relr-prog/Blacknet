@@ -16,6 +16,7 @@ const { createActions } = require("./actions");
 const { Native, native: addon } = require("./native");
 const { TabManager, CHROME_HEIGHT } = require("./tabs");
 const { Session } = require("./session");
+const { Bookmarks } = require("./bookmarks");
 const { Settings } = require("./settings");
 const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
@@ -60,6 +61,11 @@ let watcher = null;
 let ipRotator = null;
 let selfCheck = null;
 let sessionStore = null;
+let bookmarks = null;
+// The chrome view's height. Normally CHROME_HEIGHT, but the renderer reports its
+// own height when a row it owns (the bookmarks bar) appears or disappears, so the
+// page below it is always offset by the truth rather than by a guess.
+let chromeHeight = CHROME_HEIGHT;
 
 // The shape the password manager expects for copying. It used to hang off the
 // Python service, which meant a clipboard write - the one thing a user absolutely
@@ -234,6 +240,9 @@ async function createWindow() {
     enabled: settings.get("restoreSession") !== false,
   });
   tabs.sessionStore = sessionStore;
+  // Bookmarks are the operator's own list, kept separately from the restorable
+  // session: "remember my tabs" and "remember my bookmarks" are different asks.
+  bookmarks = new Bookmarks({ userDataPath: userData, log });
   registerIpc();
   attachPasswordHook();
 
@@ -337,7 +346,7 @@ function layoutNow() {
 function layoutChrome() {
   if (!chromeView || !win || win.isDestroyed()) return;
   const [width] = win.getContentSize();
-  chromeView.setBounds({ x: 0, y: 0, width, height: CHROME_HEIGHT });
+  chromeView.setBounds({ x: 0, y: 0, width, height: chromeHeight });
 }
 
 // The chrome and the Settings page are separate documents with their own CSS, so
@@ -388,6 +397,7 @@ clipboard: clipboardBridge,
       passwords,
       ipRotator,
       sessionStore,
+      bookmarks,
     }),
     "netops:open-external": async (url) => {
       // Only ever hand http(s) to the OS browser; never file: or a custom
@@ -398,6 +408,16 @@ clipboard: clipboardBridge,
       }
       await shell.openExternal(parsed.url);
       return parsed.url;
+    },
+    // The chrome frame reports its own height after each render. Kept here rather
+    // than in actions.js because it resizes the chrome view, which this file owns.
+    "netops:chrome:height": (height) => {
+      const next = Math.max(0, Math.round(Number(height) || 0));
+      if (!next || next === chromeHeight) return chromeHeight;
+      chromeHeight = next;
+      layoutChrome();
+      if (tabs) tabs.setChromeHeight(next);
+      return chromeHeight;
     },
   };
 

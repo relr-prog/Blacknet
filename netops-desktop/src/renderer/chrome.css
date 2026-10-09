@@ -165,7 +165,7 @@ body {
   background: var(--bg);
 }
 
-#toolbar button,
+#toolbar > button,
 #panel button {
   min-width: 32px;
   height: 32px;
@@ -177,13 +177,13 @@ body {
   font: inherit;
 }
 
-#toolbar button:hover,
+#toolbar > button:hover,
 #panel button:hover {
   border-color: var(--accent);
   background: var(--surface);
 }
 
-#toolbar button[disabled] {
+#toolbar > button[disabled] {
   opacity: 0.4;
   cursor: default;
 }
@@ -231,6 +231,80 @@ body {
 
 #status.error {
   color: var(--bad);
+}
+
+/* --- bookmarks ---------------------------------------------------------- */
+/* The star sits inside the address field, the way Chrome's does; it stays quiet
+   until the page is bookmarked, then takes the accent. */
+.star {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.star:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.star.on {
+  color: var(--accent);
+}
+
+.star[disabled] {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+
+#bookmarksbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#bookmarksbar::-webkit-scrollbar {
+  display: none;
+}
+
+#bookmarksbar[hidden] {
+  display: none;
+}
+
+#bookmarksbar .bookmark {
+  flex: 0 0 auto;
+  max-width: 200px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#bookmarksbar .bookmark:hover {
+  border-color: var(--line-strong);
+  background: var(--surface);
 }
 
 /* --- settings dialog ----------------------------------------------------- */

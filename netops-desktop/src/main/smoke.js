@@ -1047,6 +1047,55 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
         ? `url ${afterReloadEntry.url}, reloaded=${reloadLanded}`
         : "tab gone",
     );
+
+    // The star and the bookmarks bar, on a real http URL that never touches the
+    // network: the refused name. Clicking the star adds a bookmark, the bar
+    // appears, the page below moves down, and clicking again takes it all back.
+    const beforeBookmarkHeight = getViews().chrome.getBounds().height;
+    await chromeView.webContents.executeJavaScript("document.getElementById('star').click()");
+    await sleep(400);
+    const afterBookmark = await chromeView.webContents.executeJavaScript(`(() => ({
+      items: [...document.querySelectorAll('#bookmarksbar .bookmark')].map((b) => b.textContent),
+      hidden: document.getElementById('bookmarksbar').hidden,
+      starred: document.getElementById('star').classList.contains('on'),
+    }))()`);
+    check(
+      "the star bookmarks the active page and fills the bar",
+      afterBookmark.starred && !afterBookmark.hidden && afterBookmark.items.length === 1,
+      JSON.stringify(afterBookmark),
+    );
+    const storedBookmarks = await call("netops:bookmarks:list");
+    check(
+      "the bookmark is stored, not just painted",
+      storedBookmarks.length === 1 && storedBookmarks[0].url === "http://blacknet-smoke.onion/",
+      JSON.stringify(storedBookmarks),
+    );
+    // A taller chrome must push the page down, never paint over it. The page's
+    // own top is chrome-height + the letterbox margin, so it is bounded below,
+    // not pinned to the chrome edge.
+    const grownHeight = getViews().chrome.getBounds().height;
+    const markedTab = getViews().tab(refused.id);
+    check(
+      "a taller chrome pushes the page down instead of over it",
+      grownHeight > beforeBookmarkHeight &&
+        Boolean(markedTab) &&
+        markedTab.getBounds().y >= grownHeight,
+      `chrome ${beforeBookmarkHeight}->${grownHeight}, page y ${
+        markedTab ? markedTab.getBounds().y : "n/a"
+      }`,
+    );
+
+    await chromeView.webContents.executeJavaScript("document.getElementById('star').click()");
+    await sleep(400);
+    const clearedBookmark = await chromeView.webContents.executeJavaScript(`(() => ({
+      hidden: document.getElementById('bookmarksbar').hidden,
+      starred: document.getElementById('star').classList.contains('on'),
+    }))()`);
+    check(
+      "the star removes the bookmark again",
+      clearedBookmark.hidden && !clearedBookmark.starred,
+      JSON.stringify(clearedBookmark),
+    );
     await call("netops:tabs:close", refused.id);
 
     // The same refusal reached by following a link instead of typing it: the

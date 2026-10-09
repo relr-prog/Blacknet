@@ -12,6 +12,8 @@ const urlInput = document.getElementById("url");
 const statusLine = document.getElementById("status");
 const lockIcon = document.getElementById("lock");
 const audioIcon = document.getElementById("audio");
+const star = document.getElementById("star");
+const bookmarksbar = document.getElementById("bookmarksbar");
 
 const buttons = {
   back: document.getElementById("back"),
@@ -22,7 +24,7 @@ const buttons = {
   settings: document.getElementById("settings-btn"),
 };
 
-const state = { tabs: [], activeId: null, profile: undefined };
+const state = { tabs: [], activeId: null, profile: undefined, bookmarks: [] };
 
 // --- helpers --------------------------------------------------------------
 function unwrap(result) {
@@ -143,11 +145,74 @@ function renderActive() {
   } else if (active) {
     setStatus("");
   }
+
+  // The star: filled when the active page is bookmarked, disabled where there is
+  // nothing to bookmark (a new tab, a local page). This mirrors Chrome.
+  const bookmarkable = Boolean(active && /^https?:/i.test(active.url || ""));
+  const marked = bookmarkable && state.bookmarks.some((item) => item.url === active.url);
+  star.textContent = marked ? "★" : "☆";
+  star.disabled = !bookmarkable;
+  star.classList.toggle("on", marked);
+  star.title = marked ? "Remove bookmark" : "Bookmark this tab";
+}
+
+// --- bookmarks bar --------------------------------------------------------
+function renderBookmarks() {
+  bookmarksbar.replaceChildren();
+  bookmarksbar.hidden = state.bookmarks.length === 0;
+  for (const item of state.bookmarks) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bookmark";
+    button.textContent = item.title || hostOf(item.url);
+    // Two lines in the tooltip: what it is, and where it goes.
+    button.title = `${item.title || item.url}\n${item.url}`;
+    button.addEventListener("click", () =>
+      run(() => window.netops.tabs.navigate(state.activeId, item.url)),
+    );
+    // Right-click removes it, the same intent as clicking a filled star. This
+    // frame has no context menu, so the affordance is stated in the title.
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      run(async () => {
+        const result = unwrap(await window.netops.bookmarks.remove(item.url));
+        state.bookmarks = result.items;
+        renderBookmarks();
+        renderActive();
+      });
+    });
+    bookmarksbar.append(button);
+  }
+  reportChromeHeight();
+}
+
+async function loadBookmarks() {
+  try {
+    state.bookmarks = unwrap(await window.netops.bookmarks.list());
+  } catch {
+    state.bookmarks = [];
+  }
+  renderBookmarks();
+}
+
+// The page below this frame starts where the frame ends, so the frame has to say
+// how tall it is. It is the sum of the rows, which does not depend on the view's
+// own height - so reporting cannot feed back into itself.
+let reportedHeight = 0;
+function reportChromeHeight() {
+  const height =
+    document.getElementById("tabrow").offsetHeight +
+    document.getElementById("toolbar").offsetHeight +
+    (bookmarksbar.hidden ? 0 : bookmarksbar.offsetHeight);
+  if (!height || height === reportedHeight) return;
+  reportedHeight = height;
+  Promise.resolve(window.netops.chrome.setHeight(height)).catch(() => {});
 }
 
 function render() {
   renderTabs();
   renderActive();
+  reportChromeHeight();
 }
 
 async function run(action, { silent = false } = {}) {
@@ -207,6 +272,19 @@ buttons.reload.addEventListener("click", () => {
   );
 });
 buttons.newtab.addEventListener("click", () => run(() => window.netops.tabs.create({})));
+
+star.addEventListener("click", () =>
+  run(async () => {
+    const active = state.tabs.find((tab) => tab.id === state.activeId);
+    if (!active || !/^https?:/i.test(active.url || "")) return;
+    const result = unwrap(
+      await window.netops.bookmarks.toggle({ url: active.url, title: active.title }),
+    );
+    state.bookmarks = result.items;
+    renderBookmarks();
+    renderActive();
+  }),
+);
 
 // Both of these open the same page; the view decides which half is on screen.
 buttons.settings.addEventListener("click", () =>
@@ -304,3 +382,4 @@ window.addEventListener("keydown", (event) => {
 
 reportAudio().catch(() => {});
 render();
+loadBookmarks().catch(() => {});

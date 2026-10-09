@@ -49,6 +49,22 @@ contextBridge.exposeInMainWorld("netops", {
     export: () => ipcRenderer.invoke("netops:privacy:export"),
   },
 
+  // --- bookmarks ----------------------------------------------------------
+  // The star and the bookmarks bar. Local state, no page data.
+  bookmarks: {
+    list: () => ipcRenderer.invoke("netops:bookmarks:list"),
+    toggle: (payload) => ipcRenderer.invoke("netops:bookmarks:toggle", payload),
+    remove: (url) => ipcRenderer.invoke("netops:bookmarks:remove", url),
+  },
+
+  // --- chrome frame -------------------------------------------------------
+  // The chrome is its own view above the page. It reports its own height so the
+  // page below it starts at the right place when a row (the bookmarks bar) is
+  // shown or hidden.
+  chrome: {
+    setHeight: (height) => ipcRenderer.invoke("netops:chrome:height", height),
+  },
+
   // --- proxy pool ---------------------------------------------------------
   pool: {
     stats: () => ipcRenderer.invoke("netops:pool:stats"),

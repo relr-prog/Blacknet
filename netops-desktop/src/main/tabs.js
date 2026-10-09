@@ -92,7 +92,11 @@ class TabManager {
     // Injected by main.js so TabManager does not need to know about the password
   // manager. Returns false while the feature is unavailable (guest, signed out,
   // or switched off in settings).
-  this.captureEnabled = typeof captureEnabled === "function" ? captureEnabled : () => false;
+    this.captureEnabled = typeof captureEnabled === "function" ? captureEnabled : () => false;
+    // The height the chrome view above the page occupies. It is normally
+    // CHROME_HEIGHT, but the chrome reports its own height so a row it shows
+    // (the bookmarks bar) can move the page down instead of overlapping it.
+    this.chromeHeight = CHROME_HEIGHT;
   this.tabs = new Map(); // id -> tab
     this.order = []; // tab ids, left to right
     this.activeId = null;
@@ -1078,7 +1082,7 @@ class TabManager {
     // runs; getContentSize() on a destroyed window throws.
     if (!this.window || this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
-    const pageHeight = Math.max(0, height - CHROME_HEIGHT);
+    const pageHeight = Math.max(0, height - this.chromeHeight);
     // Letterbox the page to a fixed grid so its viewport size is not a
     // near-unique fingerprint. The address bar keeps the full width; only the
     // content below it is rounded down and centered. Off by one config flag.
@@ -1094,7 +1098,7 @@ class TabManager {
         id === this.activeId
           ? {
               x: framed.x,
-              y: CHROME_HEIGHT + framed.y,
+              y: this.chromeHeight + framed.y,
               width: framed.width,
               height: framed.height,
             }
@@ -1105,6 +1109,17 @@ class TabManager {
 
   resize() {
     this.#layout();
+  }
+
+  // The chrome reports how tall it is; the page below it moves to match. Guarded
+  // on a real change so the renderer's report and this layout do not bounce.
+  setChromeHeight(height) {
+    const next = Math.max(0, Math.round(Number(height) || 0));
+    if (!next || next === this.chromeHeight) return this.chromeHeight;
+    this.chromeHeight = next;
+    this.#layout();
+    this.#broadcast();
+    return this.chromeHeight;
   }
 
   // --- privacy reporting --------------------------------------------------
@@ -1274,7 +1289,7 @@ class TabManager {
     this.#emit("netops:tabs", {
       tabs: this.list(),
       activeId: this.activeId,
-      chromeHeight: CHROME_HEIGHT,
+      chromeHeight: this.chromeHeight,
     });
   }
 

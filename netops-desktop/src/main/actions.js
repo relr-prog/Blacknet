@@ -54,7 +54,7 @@ async function ipRotatorStatus(settings, ipRotator) {
   return { ...settings.all(), live: Boolean(live), pool: live };
 }
 
-function createActions({ core, tabs, clipboard, settings, identity, passwords, ipRotator, sessionStore }) {
+function createActions({ core, tabs, clipboard, settings, identity, passwords, ipRotator, sessionStore, bookmarks }) {
   const actions = {
     // --- tabs -------------------------------------------------------------
     "netops:tabs:list": () => tabs.list(),
@@ -116,6 +116,14 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
       sessionStore.clear();
       return { cleared: true, restoreSession: settings.get("restoreSession") !== false };
     };
+  }
+
+  // Bookmarks: the star and the bar. The list is small and local, so the chrome
+  // reads it and re-reads it after each change rather than subscribing to a push.
+  if (bookmarks) {
+    actions["netops:bookmarks:list"] = () => bookmarks.all();
+    actions["netops:bookmarks:toggle"] = (payload) => bookmarks.toggle(payload || {});
+    actions["netops:bookmarks:remove"] = (url) => bookmarks.remove(url);
   }
 
   // One local identity, created on first run, with no password behind it. There is
