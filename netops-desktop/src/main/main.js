@@ -23,6 +23,11 @@ const { PasswordManager } = require("./credentials");
 const { PasswordWatcher } = require("./passwordWatcher");
 const { IPRotatorService } = require("./ipRotator");
 const { CrSelfCheck } = require("./crSelfCheck");
+const { apply: applyHardening } = require("./hardening");
+
+// Chromium reads its command line once, at startup, so the hardening switches
+// are applied here - before the app is ready, not from a window or a service.
+applyHardening(app);
 
 const logLines = [];
 // How often the shell re-checks the session cookie. The dashboard can change the
