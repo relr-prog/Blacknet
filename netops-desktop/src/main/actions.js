@@ -65,6 +65,10 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
     "netops:tabs:go": (id, delta) => tabs.go(id, delta),
     "netops:tabs:reload": (id, hard) => tabs.reload(id, hard),
     "netops:tabs:stop": (id) => tabs.stop(id),
+    // Find: start or step through matches, and clear the highlight when the bar
+    // closes. The count is pushed back on the netops:find event, not returned.
+    "netops:tabs:find": (id, text, options) => tabs.find(id, text, options || {}),
+    "netops:tabs:find-stop": (id) => tabs.stopFind(id),
     "netops:tabs:mute": (id, muted) => tabs.setMuted(id, muted),
     // Local pages of the shell, shown in a tab. The page name is validated
     // against a fixed table in tabs.js.

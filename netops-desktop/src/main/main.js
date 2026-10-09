@@ -230,6 +230,11 @@ async function createWindow() {
     captureEnabled,
     send: sendToChrome,
     ipRotator,
+    // A Ctrl+F pressed while a page has the keyboard has to put the keyboard
+    // into the chrome's find bar, which means focusing the chrome view itself.
+    focusChrome: () => {
+      if (chromeView && !chromeView.webContents.isDestroyed()) chromeView.webContents.focus();
+    },
   });
   // Written as tabs are created and navigated, and read once here on launch. It is
   // handed to the tab manager rather than managed here so there is a single place

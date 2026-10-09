@@ -72,6 +72,7 @@ class TabManager {
     captureEnabled,
     ipRotator,
     sessionFromPartition,
+    focusChrome,
   }) {
     this.window = win;
     this.native = native;
@@ -93,6 +94,9 @@ class TabManager {
   // manager. Returns false while the feature is unavailable (guest, signed out,
   // or switched off in settings).
     this.captureEnabled = typeof captureEnabled === "function" ? captureEnabled : () => false;
+    // Injected by main.js: gives keyboard focus to the chrome view so its find
+    // bar can take what the operator types after a page-level Ctrl+F.
+    this.focusChrome = typeof focusChrome === "function" ? focusChrome : () => {};
     // The height the chrome view above the page occupies. It is normally
     // CHROME_HEIGHT, but the chrome reports its own height so a row it shows
     // (the bookmarks bar) can move the page down instead of overlapping it.
@@ -614,6 +618,33 @@ class TabManager {
     });
     wc.on("did-start-loading", () => this.#broadcast());
     wc.on("did-stop-loading", () => this.#broadcast());
+    // The match count arrives asynchronously, after the findInPage call returns,
+    // and only for the request that is current for the tab. Holding the request
+    // id on the tab is what stops a stale tick from clobbering a newer search.
+    wc.on("found-in-page", (_event, result) => {
+      if (result.requestId !== tab.findRequestId) return;
+      this.#emit("netops:find", {
+        tabId: tab.id,
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+        finalUpdate: result.finalUpdate,
+      });
+    });
+    // Find has to work while the page holds the keyboard, which is nearly always.
+    // These are the frame's shortcuts, not the page's, so the key is swallowed
+    // here before the page can act on it - except Escape, which the page may also
+    // want: the frame merely takes the chance to close its find bar.
+    wc.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") return;
+      const key = (input.key || "").toLowerCase();
+      if ((input.control || input.meta) && key === "f") {
+        event.preventDefault();
+        this.focusChrome();
+        this.#emit("netops:find-open", { tabId: tab.id });
+      } else if (key === "escape") {
+        this.#emit("netops:find-close", { tabId: tab.id });
+      }
+    });
     wc.on("did-navigate", (_event, url, _inPlace, isMainFrame) => {
       if (isMainFrame) {
         // Committed somewhere other than the refusal page: the address the tab
@@ -1032,6 +1063,37 @@ class TabManager {
   stop(id) {
     const tab = this.tabs.get(id || this.activeId);
     if (tab) tab.view.webContents.stop();
+    return this.describe(tab);
+  }
+
+  // Find in the active page. The match count is not returned from here: it comes
+  // back later on the found-in-page event, so this hands back the request and the
+  // chrome waits for the count to catch up.
+  find(id, text, options = {}) {
+    const tab = this.tabs.get(id || this.activeId);
+    if (!tab) return null;
+    const wc = tab.view.webContents;
+    const query = typeof text === "string" ? text : "";
+    if (!query) {
+      wc.stopFindInPage("clearSelection");
+      tab.findRequestId = null;
+      return { tabId: tab.id, matches: 0, activeMatchOrdinal: 0, cleared: true };
+    }
+    const opts = { forward: options.forward !== false };
+    // Only the options that are actually set are handed to Chromium. Passing
+    // findNext/matchCase as an explicit false hands back a request id but never
+    // a found-in-page result, so a plain search would sit there with no count.
+    if (options.findNext) opts.findNext = true;
+    if (options.matchCase) opts.matchCase = true;
+    tab.findRequestId = wc.findInPage(query, opts);
+    return { tabId: tab.id, requestId: tab.findRequestId, matches: 0, activeMatchOrdinal: 0 };
+  }
+
+  stopFind(id) {
+    const tab = this.tabs.get(id || this.activeId);
+    if (!tab) return null;
+    tab.view.webContents.stopFindInPage("clearSelection");
+    tab.findRequestId = null;
     return this.describe(tab);
   }
 

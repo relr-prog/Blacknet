@@ -48,6 +48,7 @@ machine for; it never needed a second language runtime to do it.
 | First-party storage isolation | Working, as far as Chromium offers it. The `ThirdPartyStoragePartitioning` feature keys third-party storage (IndexedDB, CacheStorage, etc.) by the top-level site, so an embedded origin cannot reuse its per-origin storage to track the operator across sites - Chromium's equivalent of Tor's first-party isolation. The per-profile partition remains the outer boundary |
 | New Identity & clear-on-exit | Working. New Identity closes every tab and wipes cookies, cache and HTTP auth for every profile in use, then opens one blank tab; clear-on-exit runs the same wipe when the browser quits. Off by default, and deliberately not a loop over tab-close, which would race the erase by opening a replacement tab |
 | Bookmarks (star + bar) | Working. The star in the address bar bookmarks the active `http(s)` page and fills a Chrome-style bookmarks bar below the toolbar; the bar reports its own height so the page below is pushed down instead of overlapped. Right-click a bar item to remove it. Stored in `bookmarks.json`, kept separate from the restorable session |
+| Find in page | Working. Ctrl+F opens a find bar below the toolbar, focuses its box and counts matches as they arrive (`n/m`, or "no matches"); Enter and the arrows step forward and back, Escape closes it. The bar reports its own height so the page moves down, and the highlight is cleared when the tab is left. Caught in the main process while a page holds the keyboard |
 | Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 45 JVM tests |
 | History (Android) | Working. Local SQLite, newest first, one row per URL, capped at 2000: tap to open, long-press to delete, Clear empties it. Refused targets and tracker URLs are never recorded |
 
@@ -134,8 +135,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (310)
-npm run smoke                  # real Electron window, headless, 111 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (314)
+npm run smoke                  # real Electron window, headless, 115 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

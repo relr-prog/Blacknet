@@ -14,6 +14,9 @@ const lockIcon = document.getElementById("lock");
 const audioIcon = document.getElementById("audio");
 const star = document.getElementById("star");
 const bookmarksbar = document.getElementById("bookmarksbar");
+const findbar = document.getElementById("findbar");
+const findInput = document.getElementById("find-input");
+const findCount = document.getElementById("find-count");
 
 const buttons = {
   back: document.getElementById("back"),
@@ -195,6 +198,40 @@ async function loadBookmarks() {
   renderBookmarks();
 }
 
+// --- find in page ---------------------------------------------------------
+// The bar sits in the chrome frame, so the page below it moves down like it does
+// for the bookmarks bar. The match count is not known when the search starts: it
+// is pushed back on the netops:find event, and the count element just waits.
+function hideFindBar() {
+  if (findbar.hidden) return;
+  findbar.hidden = true;
+  findInput.value = "";
+  findCount.textContent = "";
+  findCount.classList.remove("empty");
+  reportChromeHeight();
+}
+
+function closeFind() {
+  const id = state.activeId;
+  hideFindBar();
+  run(() => window.netops.tabs.findStop(id), { silent: true });
+}
+
+function openFind() {
+  if (findbar.hidden) {
+    findbar.hidden = false;
+    reportChromeHeight();
+  }
+  findInput.focus();
+  findInput.select();
+}
+
+function runFind({ forward = true, findNext = true } = {}) {
+  return run(() =>
+    window.netops.tabs.find(state.activeId, findInput.value, { forward, findNext }),
+  );
+}
+
 // The page below this frame starts where the frame ends, so the frame has to say
 // how tall it is. It is the sum of the rows, which does not depend on the view's
 // own height - so reporting cannot feed back into itself.
@@ -203,7 +240,8 @@ function reportChromeHeight() {
   const height =
     document.getElementById("tabrow").offsetHeight +
     document.getElementById("toolbar").offsetHeight +
-    (bookmarksbar.hidden ? 0 : bookmarksbar.offsetHeight);
+    (bookmarksbar.hidden ? 0 : bookmarksbar.offsetHeight) +
+    (findbar.hidden ? 0 : findbar.offsetHeight);
   if (!height || height === reportedHeight) return;
   reportedHeight = height;
   Promise.resolve(window.netops.chrome.setHeight(height)).catch(() => {});
@@ -233,15 +271,35 @@ async function run(action, { silent = false } = {}) {
 let settingsTabOpen = false;
 
 window.netops.subscribe("netops:tabs", (payload) => {
+  const previous = state.activeId;
   state.tabs = payload.tabs;
   state.activeId = payload.activeId;
   render();
+
+  // The find bar belongs to the page it was opened on. Switching tabs closes it,
+  // and the highlight left behind on the tab being left is cleared on that tab.
+  if (payload.activeId !== previous && !findbar.hidden) {
+    run(() => window.netops.tabs.findStop(previous), { silent: true });
+    hideFindBar();
+  }
 
   const open = payload.tabs.some((tab) => tab.internalPage === "settings");
   if (settingsTabOpen && !open) {
     run(() => window.netops.passwords.lock(), { silent: true });
   }
   settingsTabOpen = open;
+});
+
+window.netops.subscribe("netops:find-open", () => openFind());
+
+window.netops.subscribe("netops:find-close", () => {
+  if (!findbar.hidden) closeFind();
+});
+
+window.netops.subscribe("netops:find", ({ tabId, activeMatchOrdinal, matches }) => {
+  if (tabId !== state.activeId) return;
+  findCount.textContent = matches === 0 ? "no matches" : `${activeMatchOrdinal}/${matches}`;
+  findCount.classList.toggle("empty", matches === 0);
 });
 
 window.netops.subscribe("netops:blocked", ({ url, reason }) => {
@@ -349,6 +407,35 @@ async function answerOffer(save) {
 document.getElementById("offer-save").addEventListener("click", () => answerOffer(true));
 document.getElementById("offer-skip").addEventListener("click", () => answerOffer(false));
 
+// --- find in page: controls ------------------------------------------------
+// Typing restarts the search from the top of the page; Enter and the arrows step
+// through the matches the search already found.
+findInput.addEventListener("input", () => {
+  if (!findInput.value) {
+    findCount.textContent = "";
+    findCount.classList.remove("empty");
+  }
+  runFind({ findNext: false });
+});
+
+findInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runFind({ forward: !event.shiftKey, findNext: true });
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeFind();
+  }
+});
+
+document.getElementById("find-next").addEventListener("click", () =>
+  runFind({ forward: true, findNext: true }),
+);
+document.getElementById("find-prev").addEventListener("click", () =>
+  runFind({ forward: false, findNext: true }),
+);
+document.getElementById("find-close").addEventListener("click", () => closeFind());
+
 // A browser that is silently mute is worse than one that says so: check once at
 // startup and put the reason in the toolbar.
 async function reportAudio() {
@@ -374,6 +461,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     urlInput.focus();
     urlInput.select();
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+    // When the page has the keyboard this is caught in the main process and
+    // delivered as netops:find-open; this branch covers the chrome's own focus.
+    event.preventDefault();
+    openFind();
   } else if (!typing && event.key === "F6") {
     event.preventDefault();
     run(() => window.netops.tabs.create({}));

@@ -1096,6 +1096,69 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       clearedBookmark.hidden && !clearedBookmark.starred,
       JSON.stringify(clearedBookmark),
     );
+
+    // Find in page. Ctrl+F is caught in the chrome here; when the page has the
+    // keyboard it is caught in the main process instead and delivered as an
+    // event, which is why the shortcut lives behind this same openFind path.
+    // The page is a controlled data: document: Chromium's own error page is not
+    // a normal document and its find engine does not answer for it.
+    const findTab = await call("netops:tabs:create", { active: true });
+    await getViews().tab(findTab.id).webContents.loadURL(
+      "data:text/html,<title>Find smoke</title><p>needle needle needle</p>",
+    );
+    await sleep(400);
+    const beforeFindHeight = getViews().chrome.getBounds().height;
+    await chromeView.webContents.executeJavaScript(
+      "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }))",
+    );
+    await sleep(200);
+    const findOpen = await chromeView.webContents.executeJavaScript(`(() => ({
+      open: !document.getElementById('findbar').hidden,
+      focused: document.activeElement ? document.activeElement.id : null,
+    }))()`);
+    check(
+      "Ctrl+F opens the find bar and focuses its box",
+      findOpen.open && findOpen.focused === "find-input",
+      JSON.stringify(findOpen),
+    );
+
+    // Type into the box and let the found-in-page event update the count.
+    await chromeView.webContents.executeJavaScript(
+      "(() => { const i = document.getElementById('find-input'); i.value = 'needle'; i.dispatchEvent(new Event('input')); })()",
+    );
+    await sleep(1500);
+    const foundCount = await chromeView.webContents.executeJavaScript(
+      "document.getElementById('find-count').textContent",
+    );
+    check(
+      "a real match on the page is found and counted",
+      /^\d+\/\d+$/.test(foundCount) && foundCount.split("/")[0] !== "0",
+      String(foundCount),
+    );
+
+    const findHeight = getViews().chrome.getBounds().height;
+    check(
+      "the find bar moves the page down like the bookmarks bar",
+      findHeight > beforeFindHeight,
+      `chrome ${beforeFindHeight}->${findHeight}`,
+    );
+
+    await chromeView.webContents.executeJavaScript(
+      "document.getElementById('find-close').click()",
+    );
+    await sleep(200);
+    const findClosed = await chromeView.webContents.executeJavaScript(`(() => ({
+      hidden: document.getElementById('findbar').hidden,
+      count: document.getElementById('find-count').textContent,
+    }))()`);
+    check(
+      "closing the find bar clears it and puts the height back",
+      findClosed.hidden &&
+        findClosed.count === "" &&
+        getViews().chrome.getBounds().height === beforeFindHeight,
+      `${JSON.stringify(findClosed)} chrome=${getViews().chrome.getBounds().height}`,
+    );
+    await call("netops:tabs:close", findTab.id);
     await call("netops:tabs:close", refused.id);
 
     // The same refusal reached by following a link instead of typing it: the

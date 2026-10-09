@@ -15,6 +15,9 @@ const EVENTS = [
   "netops:download",
   "netops:password-offer",
   "netops:settings",
+  "netops:find",
+  "netops:find-open",
+  "netops:find-close",
 ];
 
 contextBridge.exposeInMainWorld("netops", {
@@ -28,6 +31,8 @@ contextBridge.exposeInMainWorld("netops", {
     go: (id, delta) => ipcRenderer.invoke("netops:tabs:go", id, delta),
     reload: (id, hard) => ipcRenderer.invoke("netops:tabs:reload", id, hard),
     stop: (id) => ipcRenderer.invoke("netops:tabs:stop", id),
+    find: (id, text, options) => ipcRenderer.invoke("netops:tabs:find", id, text, options || {}),
+    findStop: (id) => ipcRenderer.invoke("netops:tabs:find-stop", id),
     mute: (id, muted) => ipcRenderer.invoke("netops:tabs:mute", id, muted),
     // Opens a local page of the shell in a tab, optionally on a given view.
     internal: (name, options) => ipcRenderer.invoke("netops:tabs:internal", name, options),

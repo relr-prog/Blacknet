@@ -307,6 +307,68 @@ body {
   background: var(--surface);
 }
 
+/* --- find in page ------------------------------------------------------- */
+#findbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px 0 14px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+#findbar[hidden] {
+  display: none;
+}
+
+#find-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+#find-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+#find-count {
+  flex: 0 0 auto;
+  min-width: 72px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#find-count.empty {
+  color: var(--bad);
+}
+
+#findbar button {
+  flex: 0 0 auto;
+  min-width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+#findbar button:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
 /* --- settings dialog ----------------------------------------------------- */
 /* Shares the panel's shape. Settings is wider because it carries labels and
    actions side by side. */

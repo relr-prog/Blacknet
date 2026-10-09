@@ -54,6 +54,22 @@
          place whether or not this row is on screen. -->
     <div id="bookmarksbar" role="toolbar" aria-label="Bookmarks" hidden></div>
 
+    <!-- Find in page. Another row the chrome reports a height for, so the page
+         below drops by exactly this much while it is open. -->
+    <div id="findbar" role="search" aria-label="Find in page" hidden>
+      <input
+        id="find-input"
+        type="text"
+        spellcheck="false"
+        aria-label="Find in page"
+        placeholder="Find in page"
+      />
+      <span id="find-count" aria-live="polite"></span>
+      <button type="button" id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">&#8593;</button>
+      <button type="button" id="find-next" title="Next match (Enter)" aria-label="Next match">&#8595;</button>
+      <button type="button" id="find-close" title="Close find bar (Esc)" aria-label="Close find bar">&#10005;</button>
+    </div>
+
     <!-- Settings and Privacy used to be dialogs here. They now open as a page of
          the shell in an ordinary tab (renderer/pages/settings.html), so nothing
          floats over the browser any more. -->
