@@ -22,9 +22,17 @@
 const SWITCHES = [
   // browser.send_pings=false - no <a ping> hyperlink auditing.
   { name: "no-pings" },
-  // network.http.referer.XOriginPolicy=2 - no cross-site referrer. A feature,
-  // not a switch, so it is enabled rather than appended bare.
-  { name: "enable-features", value: "NoReferrers" },
+  // network.http.referer.XOriginPolicy=2 - no cross-site referrer - and
+  // privacy.firstparty.isolate - third-party storage (IndexedDB, CacheStorage,
+  // etc.) keyed by the top-level site, Chromium's equivalent of Tor's first-party
+  // isolation. Both are features, not switches, and both live in the one
+  // enable-features value because a second enable-features switch would replace
+  // the first. Enabling them states the intent even where the build already
+  // defaults them on.
+  {
+    name: "enable-features",
+    value: "NoReferrers,ThirdPartyStoragePartitioning",
+  },
   // media.peerconnection.ice.no_host / default_address_only - WebRTC may not
   // route around the proxy to learn the real address. Only non-proxied UDP is
   // refused; a page that legitimately needs WebRTC over TCP still works.

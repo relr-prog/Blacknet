@@ -228,6 +228,16 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     const win = BrowserWindow.getAllWindows()[0];
     check("window created", Boolean(win));
 
+    // The command line is the one place the hardening set becomes real, so read
+    // it back rather than trusting that apply() ran. State partitioning is what
+    // keys third-party storage by the top-level site.
+    const features = app.commandLine.getSwitchValue("enable-features");
+    check(
+      "state partitioning is switched on at startup",
+      features.split(",").includes("ThirdPartyStoragePartitioning"),
+      features || "(no enable-features switch)",
+    );
+
     const tabs = await call("netops:tabs:list");
     check("one tab on start", tabs.length === 1, `${tabs.length} tab(s), url=${tabs[0] && tabs[0].url}`);
 

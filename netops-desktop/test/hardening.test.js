@@ -25,12 +25,15 @@ test("the WebRTC policy is pinned to refusing non-proxied UDP", () => {
   assert.equal(policy.value, "disable_non_proxied_udp");
 });
 
-test("referrer stripping is the NoReferrers feature, not a made-up switch", () => {
+test("the enabled features are the real ones, not made-up switches", () => {
   // Chromium has no --no-referrers and no --dns-prefetch-disable. The referrer
-  // rule is a feature, so it must ride through --enable-features, and no entry
-  // may claim a switch that does not exist.
+  // rule and state partitioning are features, so they ride through
+  // --enable-features, and no entry may claim a switch that does not exist.
   const features = SWITCHES.find((s) => s.name === "enable-features");
-  assert.equal(features.value, "NoReferrers");
+  assert.equal(features.value, "NoReferrers,ThirdPartyStoragePartitioning");
+  const enabled = features.value.split(",");
+  assert.ok(enabled.includes("NoReferrers"), "cross-site referrer stripped");
+  assert.ok(enabled.includes("ThirdPartyStoragePartitioning"), "third-party storage keyed by site");
   assert.equal(SWITCHES.some((s) => s.name === "dns-prefetch-disable"), false);
 });
 
@@ -50,7 +53,7 @@ test("apply() puts every switch on the command line with the right value", () =>
   apply(app);
   assert.deepEqual(seen, [
     ["no-pings", undefined],
-    ["enable-features", "NoReferrers"],
+    ["enable-features", "NoReferrers,ThirdPartyStoragePartitioning"],
     ["force-webrtc-ip-handling-policy", "disable_non_proxied_udp"],
     ["disable-background-networking", undefined],
   ]);

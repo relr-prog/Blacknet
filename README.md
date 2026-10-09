@@ -45,6 +45,7 @@ machine for; it never needed a second language runtime to do it.
 | Chromium hardening defaults (LibreWolf-aligned) | Working. `no-pings`, referrers stripped (the `NoReferrers` feature, since Chromium has no switch for it), WebRTC non-proxied UDP refused, background networking off. The rest of LibreWolf's privacy defaults are already this shell's own policy (see config) |
 | Clock pinned to UTC | Working, best-effort. `Date.getTimezoneOffset` and `Intl.DateTimeFormat().resolvedOptions().timeZone` answer UTC in every tab, injected at document start into the page's own world (no preload, so the no-bridge rule holds) and the process `TZ` is set at startup. Engine-level formatting paths are out of reach, so it is one switch among many rather than a guarantee |
 | Letterboxing | Working. The page viewport is rounded down to Tor's 200 x 100 grid and centered, so two windows a few pixels apart report the same size and it stops being a fingerprint; the address bar keeps the full window width. Toggle: `config.letterbox` |
+| First-party storage isolation | Working, as far as Chromium offers it. The `ThirdPartyStoragePartitioning` feature keys third-party storage (IndexedDB, CacheStorage, etc.) by the top-level site, so an embedded origin cannot reuse its per-origin storage to track the operator across sites - Chromium's equivalent of Tor's first-party isolation. The per-profile partition remains the outer boundary |
 | New Identity & clear-on-exit | Working. New Identity closes every tab and wipes cookies, cache and HTTP auth for every profile in use, then opens one blank tab; clear-on-exit runs the same wipe when the browser quits. Off by default, and deliberately not a loop over tab-close, which would race the erase by opening a replacement tab |
 | Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 45 JVM tests |
 | History (Android) | Working. Local SQLite, newest first, one row per URL, capped at 2000: tap to open, long-press to delete, Clear empties it. Refused targets and tracker URLs are never recorded |
@@ -133,7 +134,7 @@ shell on startup, before any of our code runs.
 cd netops-desktop
 npm install
 npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (302)
-npm run smoke                  # real Electron window, headless, 106 checks
+npm run smoke                  # real Electron window, headless, 107 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator
