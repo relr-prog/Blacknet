@@ -1188,6 +1188,34 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       await sleep(400);
     }
 
+    // New Identity: plant a cookie, reset, and require the strip collapsed to one
+    // tab with the jar empty. Without the reset the cookie would survive, so an
+    // empty jar here is the feature and not just an empty starting state.
+    const identityOpen = await call("netops:tabs:list");
+    const identityView = identityOpen[0] ? getViews().tab(identityOpen[0].id) : null;
+    if (identityView) {
+      await identityView.webContents.session.cookies.set({
+        url: "https://example.com/",
+        name: "smokeIdentity",
+        value: "1",
+      });
+      const planted = await call("netops:cookies:report");
+      check("a cookie planted for the identity check", planted.count >= 1, `${planted.count} cookie(s)`);
+      const identityReport = await call("netops:privacy:new-identity");
+      const afterIdentity = await call("netops:cookies:report");
+      const identityTabs = await call("netops:tabs:list");
+      check(
+        "new identity leaves one fresh tab",
+        identityTabs.length === 1,
+        `${identityTabs.length} tab(s)`,
+      );
+      check(
+        "new identity clears the cookie jar",
+        afterIdentity.count === 0 && identityReport.cleared === true,
+        `cookies ${afterIdentity.count}, cleared ${identityReport.cleared}`,
+      );
+    }
+
     const failed = checks.filter((entry) => !entry.passed);
     log(`${checks.length - failed.length}/${checks.length} checks passed`);
     quit(failed.length === 0 ? 0 : 1);

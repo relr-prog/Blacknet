@@ -43,6 +43,11 @@ const SCHEMA = {
   // your tabs on quit is not a privacy feature, it is data loss. It stores URLs
   // and nothing else (see session.js), and this switch turns it off.
   restoreSession: { type: "bool", default: true },
+  // Wipe cookies, cache and site storage for every profile when the browser
+  // quits. Off by default: erasing a browsing session is a deliberate act, not a
+  // surprise, and it is separate from restoreSession so the two intents - "don't
+  // reopen" and "don't keep anything" - are never conflated.
+  clearOnExit: { type: "bool", default: false },
 
   // --- written by the shell, not the operator --------------------------------
   // IP Rotator master switch: false means "direct connection", whatever the pool

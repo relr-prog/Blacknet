@@ -75,6 +75,9 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
     "netops:cookies:clear": (profile, domain) => tabs.clearCookies(profile, domain),
     "netops:cache:report": (profile) => tabs.cacheReport(profile),
     "netops:cache:clear": (profile) => tabs.clearCache(profile),
+    // New Identity: close every tab and wipe every profile. The one destructive
+    // action here, and the only one that is offered to an operator directly.
+    "netops:privacy:new-identity": () => tabs.newIdentity(),
     "netops:blocklist:check": (url) => core.verdictFor(url),
     "netops:theme:apply": (patch) => core.applyTheme(patch),
 

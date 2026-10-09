@@ -262,7 +262,15 @@ test("every writable key survives a patch that sets it", () => {
   };
   for (const [key, spec] of Object.entries(SCHEMA)) {
     if (spec.writable === false) continue;
-    const value = spec.type === "enum" ? spec.values[spec.values.length - 1] : sample[spec.type];
+    // A bool's sample must be the opposite of its default, or a key whose default
+    // is already false would look like it "did not take the value it was given"
+    // when it took exactly that value (clearOnExit is the first such key).
+    const value =
+      spec.type === "enum"
+        ? spec.values[spec.values.length - 1]
+        : spec.type === "bool"
+          ? !DEFAULTS[key]
+          : sample[spec.type];
     assert.notEqual(
       settings.patch({ [key]: value })[key],
       DEFAULTS[key],

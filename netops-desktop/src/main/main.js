@@ -529,9 +529,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
 // Quitting must actually stop the proxy gateway, and neither `before-quit` nor
-  // app.exit() waits for an async handler - app.exit() skips before-quit entirely.
-  // So hold the quit event, stop the child, then exit for real. Without this every
-  // run leaves a gateway still bound to 8888.
+//   app.exit() waits for an async handler - app.exit() skips before-quit entirely.
+//   So hold the quit event, do the async work, then exit for real. Without this
+//   every run leaves a gateway still bound to 8888; with clear-on-exit on, it also
+//   leaves the profile's cookies and cache on disk.
 let quitting = false;
 let exitCode = 0;
 
@@ -541,11 +542,16 @@ function quit(code = 0) {
 }
 
 app.on("before-quit", (event) => {
-  if (quitting || !ipRotator || !ipRotator.child) return;
+  if (quitting) return;
+  const stoppingRotator = Boolean(ipRotator && ipRotator.child);
+  const clearing = Boolean(tabs && settings && settings.get("clearOnExit") === true);
+  if (!stoppingRotator && !clearing) return;
   event.preventDefault();
-  ipRotator
-    .stop()
+  Promise.resolve()
+    .then(() => (stoppingRotator ? ipRotator.stop() : undefined))
     .catch((error) => log(`ip-rotator: ${error.message}`))
+    .then(() => (clearing ? tabs.clearAllData() : undefined))
+    .catch((error) => log(`clear-on-exit: ${error.message}`))
     .finally(() => {
       quitting = true;
       app.exit(exitCode);

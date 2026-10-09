@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("netops", {
     clearCookies: (profile, domain) => ipcRenderer.invoke("netops:cookies:clear", profile, domain),
     cache: (profile) => ipcRenderer.invoke("netops:cache:report", profile),
     clearCache: (profile) => ipcRenderer.invoke("netops:cache:clear", profile),
+    newIdentity: () => ipcRenderer.invoke("netops:privacy:new-identity"),
     checkUrl: (url) => ipcRenderer.invoke("netops:blocklist:check", url),
     applyTheme: (patch) => ipcRenderer.invoke("netops:theme:apply", patch),
 

@@ -62,13 +62,29 @@ function isRealConsoleFault(level, message) {
 }
 
 class TabManager {
-  constructor({ window: win, native, config, log, send, captureEnabled, ipRotator }) {
+  constructor({
+    window: win,
+    native,
+    config,
+    log,
+    send,
+    captureEnabled,
+    ipRotator,
+    sessionFromPartition,
+  }) {
     this.window = win;
     this.native = native;
     this.config = config;
     this.log = log || (() => {});
     // Injected so this class never has to know how the chrome view is built.
     this.send = send || null;
+    // Resolving a partition to a session is the one thing that needs Electron's
+    // session module, which a plain-node test process does not have. Injecting it
+    // lets the clearing paths (reset/clearAllData) be tested without a browser.
+    this.sessionFromPartition =
+      typeof sessionFromPartition === "function"
+        ? sessionFromPartition
+        : (profile) => session.fromPartition(this.partitionFor(profile), { cache: true });
     // Injected by main.js so TabManager does not need to know how the proxy
     // gateway is supervised. Only proxy() is used.
     this.ipRotator = ipRotator || null;
@@ -187,7 +203,7 @@ class TabManager {
   }
 
   #partitionSession(profile) {
-    return session.fromPartition(this.partitionFor(profile), { cache: true });
+    return this.sessionFromPartition(profile);
   }
 
   // Chromium must not open a socket to something the C++ policy rejects, and
@@ -1157,6 +1173,86 @@ class TabManager {
     const targetSession = this.#partitionSession(profile || this.config.defaultProfile);
     const root = await targetSession.getStoragePath();
     return this.native.cacheFor(root || this.config.profileRoot).scan();
+  }
+
+  // --- erase everything ---------------------------------------------------
+
+  // Every profile that could have written something to disk. The default one
+  // always counts, even with no tabs open, because it is the partition a fresh
+  // tab lands in.
+  #profilesInUse() {
+    const profiles = new Set([this.config.defaultProfile]);
+    for (const tab of this.tabs.values()) {
+      if (tab.profile) profiles.add(tab.profile);
+    }
+    return [...profiles].sort();
+  }
+
+  // Cookies, cache and HTTP auth for each profile. Best-effort per profile: one
+  // that refuses to clear is logged and skipped rather than aborting the rest,
+  // because leaving five partitions clean and one dirty beats clearing none.
+  async #wipe(profiles) {
+    for (const profile of profiles) {
+      let targetSession;
+      try {
+        targetSession = this.#partitionSession(profile);
+      } catch (error) {
+        this.log(`clear: ${profile}: ${error.message}`);
+        continue;
+      }
+      try {
+        await targetSession.clearStorageData();
+      } catch (error) {
+        this.log(`clear: ${profile}: storage: ${error.message}`);
+      }
+      try {
+        await targetSession.clearCache();
+      } catch (error) {
+        this.log(`clear: ${profile}: cache: ${error.message}`);
+      }
+      if (typeof targetSession.clearAuthCache === "function") {
+        try {
+          await targetSession.clearAuthCache();
+        } catch (error) {
+          this.log(`clear: ${profile}: auth: ${error.message}`);
+        }
+      }
+    }
+  }
+
+  // Wipe every profile's cookies, cache and storage but leave the tabs where they
+  // are. This is what clear-on-exit calls: the browser is closing, so there is
+  // nothing to preserve in the strip.
+  async clearAllData() {
+    const profiles = this.#profilesInUse();
+    await this.#wipe(profiles);
+    return { profiles, cleared: true };
+  }
+
+  // Close every tab and wipe every profile. Deliberately not a loop over close():
+  // close() opens a replacement tab whenever the last one goes and forgets the
+  // session slot one at a time, so the strip would spend the whole loop fighting
+  // the erase. #discard removes a tab without either side effect.
+  async reset() {
+    const profiles = this.#profilesInUse();
+    const ids = [...this.tabs.keys()];
+    for (const id of ids) {
+      if (this.sessionStore) this.sessionStore.forget(id);
+      this.#discard(this.tabs.get(id));
+    }
+    if (this.sessionStore) this.sessionStore.clear();
+    await this.#wipe(profiles);
+    return { profiles, cleared: true };
+  }
+
+  // The New Identity button: forget everything and come back to one blank tab.
+  // The reset is awaited before the tab opens, so a failure to open it still
+  // leaves the operator with a wiped browser and an empty strip, never the old
+  // session standing next to a fresh tab.
+  async newIdentity() {
+    const { profiles, cleared } = await this.reset();
+    const tab = this.create({ active: true });
+    return { profiles, cleared, tab };
   }
 
   #broadcast() {

@@ -206,6 +206,39 @@ async function renderAppearance() {
     }),
   );
   settingsBody.append(row("Saved session", forget, "Clears it without turning restore off."));
+
+  const clearExit = labelled("Clear everything on exit", "input", {
+    id: "set-clear-exit",
+    type: "checkbox",
+  });
+  clearExit.input.checked = values.clearOnExit === true;
+  clearExit.input.addEventListener("change", () =>
+    run(() => writeSettings({ clearOnExit: clearExit.input.checked })),
+  );
+  settingsBody.append(
+    row(
+      "Clear on exit",
+      clearExit.label,
+      "Wipes cookies, cache and site storage for every profile when the browser quits.",
+    ),
+  );
+
+  const identity = document.createElement("button");
+  identity.type = "button";
+  identity.textContent = "New identity";
+  identity.addEventListener("click", () =>
+    run(
+      async () => {
+        const report = unwrap(await window.netops.privacy.newIdentity());
+        await showSection("appearance");
+        setStatus(`New identity: cleared ${report.profiles.length} profile(s)`);
+      },
+      { silent: true },
+    ),
+  );
+  settingsBody.append(
+    row("New identity", identity, "Closes every tab and wipes cookies, cache and storage."),
+  );
 }
 
 function defaultBackground(scheme) {
