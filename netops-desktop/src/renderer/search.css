@@ -6,26 +6,39 @@
    opposite of that: it scrolls, its text is selectable, and it is laid out as a
    column rather than as a strip of chrome, so those defaults are undone here.
 
+   This page is read, not glanced at, so it is set twice the size of the toolbar.
+   chrome.css pins the root font at 13px; the html rule below lifts it to 26px,
+   which doubles every rem on this page at once. The few values written in px (the
+   mark, the icon, the paddings) are doubled alongside so the whole page scales
+   together rather than the text growing out of its frame.
+
    The polish is deliberately light: one quiet transition on the cards, a
    shimmer while a query is in flight, and results that rise in as they arrive.
    Everything animated is switched off for readers who ask for reduced motion. */
+
+html {
+  font-size: 26px;
+}
 
 body.search {
   display: block;
   height: auto;
   min-height: 100vh;
   overflow: auto;
-  padding: 0 0 56px;
+  padding: 0 0 112px;
   color: var(--text);
   background: var(--bg);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* chrome.css pins body to 13px with its own shorthand; restore it to the root
+     so inherited text and the font:inherit controls below both double. */
+  font-size: 1rem;
   user-select: text;
 }
 
 body.search main {
   width: min(46rem, 100%);
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 40px;
 }
 
 /* --- the search box ------------------------------------------------------ */
@@ -36,14 +49,16 @@ body.search .searchbar {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 0 14px;
+  gap: 24px;
+  padding: 36px 0 28px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 
 body.search .mark {
   flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
   -webkit-user-drag: none;
   user-select: none;
 }
@@ -51,7 +66,7 @@ body.search .mark {
 body.search form {
   display: flex;
   flex: 1 1 auto;
-  gap: 8px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -65,9 +80,9 @@ body.search .field {
 
 body.search .icon {
   position: absolute;
-  left: 11px;
-  width: 15px;
-  height: 15px;
+  left: 22px;
+  width: 30px;
+  height: 30px;
   fill: none;
   stroke: var(--muted);
   stroke-width: 2;
@@ -80,7 +95,7 @@ body.search input[type="search"] {
   min-width: 0;
   padding: 0.55rem 0.85rem 0.55rem 2.1rem;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: 20px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -94,14 +109,14 @@ body.search input[type="search"]::placeholder {
 body.search input[type="search"]:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 body.search button {
   flex: 0 0 auto;
   padding: 0.55rem 1.05rem;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 20px;
   background: var(--accent-fill);
   color: var(--accent-ink);
   font: inherit;
@@ -115,7 +130,7 @@ body.search button:hover {
 }
 
 body.search button:active {
-  transform: translateY(1px);
+  transform: translateY(2px);
 }
 
 body.search button:focus-visible {
@@ -126,7 +141,7 @@ body.search button:focus-visible {
 /* --- status line --------------------------------------------------------- */
 
 body.search .meta {
-  margin: 16px 0 4px;
+  margin: 32px 0 8px;
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -134,13 +149,13 @@ body.search .meta {
 body.search .meta.busy::after {
   content: "";
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-left: 8px;
-  border: 2px solid var(--line-strong);
+  width: 20px;
+  height: 20px;
+  margin-left: 16px;
+  border: 4px solid var(--line-strong);
   border-top-color: var(--accent);
   border-radius: 50%;
-  vertical-align: -1px;
+  vertical-align: -2px;
   animation: spin 700ms linear infinite;
 }
 
@@ -151,18 +166,18 @@ body.search .meta.busy::after {
 /* --- loading skeleton ---------------------------------------------------- */
 
 body.search .skeleton {
-  margin-top: 14px;
+  margin-top: 28px;
 }
 
 body.search .sk + .sk {
-  margin-top: 22px;
+  margin-top: 44px;
 }
 
 body.search .sk-title,
 body.search .sk-line {
   display: block;
-  height: 12px;
-  border-radius: 6px;
+  height: 24px;
+  border-radius: 12px;
   background: linear-gradient(90deg, var(--surface), var(--raised), var(--surface));
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
@@ -170,8 +185,8 @@ body.search .sk-line {
 
 body.search .sk-title {
   width: 42%;
-  height: 16px;
-  margin-bottom: 10px;
+  height: 32px;
+  margin-bottom: 20px;
 }
 
 body.search .sk-line {
@@ -180,7 +195,7 @@ body.search .sk-line {
 
 body.search .sk-line.short {
   width: 68%;
-  margin-top: 8px;
+  margin-top: 16px;
 }
 
 @keyframes shimmer {
@@ -191,27 +206,27 @@ body.search .sk-line.short {
 /* --- results ------------------------------------------------------------- */
 
 body.search .results {
-  margin: 12px 0 0;
+  margin: 24px 0 0;
   padding: 0;
   list-style: none;
 }
 
 body.search .result {
-  padding: 14px 16px;
+  padding: 28px 32px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 24px;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
   animation: rise 260ms ease both;
 }
 
 body.search .result + .result {
-  margin-top: 6px;
+  margin-top: 12px;
 }
 
 body.search .result:hover {
   background: var(--surface);
   border-color: var(--line);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 body.search .result:nth-child(1) { animation-delay: 0ms; }
@@ -223,7 +238,7 @@ body.search .result:nth-child(6) { animation-delay: 150ms; }
 body.search .result:nth-child(n + 7) { animation-delay: 180ms; }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -240,7 +255,7 @@ body.search .result a:hover {
 
 body.search .where {
   display: inline-block;
-  margin-left: 8px;
+  margin-left: 16px;
   padding: 0.05rem 0.45rem;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -248,12 +263,12 @@ body.search .where {
   color: var(--muted);
   font-size: 0.68rem;
   letter-spacing: 0.01em;
-  vertical-align: 1px;
+  vertical-align: 2px;
 }
 
 body.search .url {
   display: block;
-  margin-top: 3px;
+  margin-top: 6px;
   color: var(--muted);
   font-family: ui-monospace, "Cascadia Mono", monospace;
   font-size: 0.78rem;
@@ -261,7 +276,7 @@ body.search .url {
 }
 
 body.search .snippet {
-  margin: 7px 0 0;
+  margin: 14px 0 0;
   color: var(--text);
   line-height: 1.55;
 }
@@ -269,14 +284,16 @@ body.search .snippet {
 /* --- empty state --------------------------------------------------------- */
 
 body.search .emptystate {
-  padding: 44px 0;
+  padding: 88px 0;
   text-align: center;
   color: var(--muted);
 }
 
 body.search .emptystate .art {
+  width: 96px;
+  height: 96px;
   opacity: 0.75;
-  margin-bottom: 12px;
+  margin-bottom: 24px;
   -webkit-user-drag: none;
   user-select: none;
 }
@@ -288,8 +305,8 @@ body.search .emptystate p {
 /* --- footer -------------------------------------------------------------- */
 
 body.search .sources {
-  margin: 26px 0 0;
-  padding-top: 14px;
+  margin: 52px 0 0;
+  padding-top: 28px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.8rem;
