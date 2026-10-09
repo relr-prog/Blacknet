@@ -8,13 +8,25 @@
 // privacy policy). Values may be overridden by <userData>/browser.json.
 
 const path = require("path");
+const { SOURCE_IDS } = require("./search");
 
 const DEFAULTS = {
   // --- navigation ---------------------------------------------------------
   httpsOnly: true,
   allowDataUrls: false,
   newTabUrl: "about:blank",
-  searchUrl: "https://duckduckgo.com/?q=%s",
+  // The shell's own meta-search, run in the main process. There is no
+  // third-party engine behind the address bar and no API key: a query goes to
+  // this fixed set of public JSON APIs and the merged list is shown on the
+  // shell's own page. Set enabled to false to make the address bar accept
+  // addresses only again.
+  search: {
+    enabled: true,
+    sources: [...SOURCE_IDS],
+    limit: 10,
+    perSource: 8,
+    timeoutMs: 6000,
+  },
   blockPrivateHosts: true,
 
   // --- privacy ------------------------------------------------------------

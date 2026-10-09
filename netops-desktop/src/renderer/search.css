@@ -1,0 +1,154 @@
+/* The shell's search results page. Tokens come from chrome.css (palette.css),
+   which this page already loads.
+
+   chrome.css is written for the floating toolbar and locks the document to the
+   viewport, disables selection and centres controls. A results page is the
+   opposite of that: it scrolls, its text is selectable, and it is laid out as a
+   column rather than as a strip of chrome, so those defaults are undone here. */
+
+body.search {
+  display: block;
+  height: auto;
+  min-height: 100vh;
+  overflow: auto;
+  padding: 0 0 48px;
+  color: var(--text);
+  background: var(--bg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  user-select: text;
+}
+
+body.search main {
+  width: min(44rem, 100%);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* --- the in-page search box --------------------------------------------- */
+
+body.search .searchbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0 14px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+body.search .mark {
+  flex: 0 0 auto;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+body.search form {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+body.search input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+body.search input[type="search"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+body.search button {
+  flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+body.search button:hover {
+  background: var(--raised);
+}
+
+body.search button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- results ------------------------------------------------------------- */
+
+body.search .meta {
+  margin: 14px 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+body.search .results {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+body.search .result {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+body.search .result a {
+  color: var(--accent);
+  font-size: 1.05rem;
+  text-decoration: none;
+}
+
+body.search .result a:hover {
+  text-decoration: underline;
+}
+
+body.search .url {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+body.search .snippet {
+  margin: 6px 0 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+body.search .where {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+
+body.search .empty {
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+
+body.search .sources {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}

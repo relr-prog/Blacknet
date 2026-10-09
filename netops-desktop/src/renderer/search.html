@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- The shell's own results page. It runs no code but its own: the results
+         are pushed in as data by the main process, and the page has no bridge to
+         ask for anything else. script-src 'self' is what lets search.js build
+         the list and turn the in-page box into a "#q=" the shell can read. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self' data:; script-src 'self';"
+    />
+    <title>BlackNet Search</title>
+    <link rel="icon" href="../../assets/icons/blacknet-32.png" type="image/png" />
+    <link rel="stylesheet" href="chrome.css" />
+    <link rel="stylesheet" href="search.css" />
+  </head>
+  <body class="search">
+    <main>
+      <header class="searchbar">
+        <img class="mark" src="../../assets/icons/blacknet-32.png" alt="" width="24" height="24" />
+        <form id="form" role="search" autocomplete="off">
+          <input
+            id="q"
+            type="search"
+            name="q"
+            placeholder="Search"
+            aria-label="Search"
+            spellcheck="false"
+          />
+          <button type="submit">Search</button>
+        </form>
+      </header>
+
+      <p class="meta" id="meta">Searching&hellip;</p>
+      <ol class="results" id="results"></ol>
+      <p class="empty" id="empty" hidden></p>
+      <p class="sources" id="sources"></p>
+    </main>
+    <script src="search.js"></script>
+  </body>
+</html>

@@ -12,12 +12,20 @@ const { pathToFileURL } = require("url");
 const { internalPage, RENDERER_DIR } = require("./internal-pages");
 const { Ledger, registrable, hostOf } = require("./ledger");
 const { onionHost } = require("./onion");
+const { search } = require("./search");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
 // address it is standing in for.
 const BLOCK_PAGE = path.join(RENDERER_DIR, "unreachable.html");
 const BLOCK_PAGE_URL = pathToFileURL(BLOCK_PAGE).href;
+
+// The shell's own results page, loaded into the tab that asked for the search.
+// It is an ordinary file: no preload, no bridge. The main process hands it the
+// results as data (executeJavaScript), so a page that shows untrusted snippets
+// never gets a channel it could ask the shell anything over.
+const SEARCH_PAGE = path.join(RENDERER_DIR, "search.html");
+const SEARCH_PAGE_URL = pathToFileURL(SEARCH_PAGE).href;
 
 const CHROME_HEIGHT = 92;
 
@@ -128,8 +136,12 @@ class TabManager {
       // A tab showing the refusal page is still on the address the operator
       // asked for: what is painted is an explanation, and the address bar has
       // to keep the name it was given rather than the path of the file
-      // explaining it.
-      url: tab.blockedUrl || wc.getURL() || tab.pendingUrl || this.config.newTabUrl,
+      // explaining it. A tab showing the shell's own search results shows the
+      // query for the same reason: the query is what the operator typed, and it
+      // is what the bar must hand back to search again.
+      url: tab.searchQuery != null
+        ? tab.searchQuery
+        : (tab.blockedUrl || wc.getURL() || tab.pendingUrl || this.config.newTabUrl),
       loading: wc.isLoading(),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
@@ -579,6 +591,9 @@ class TabManager {
         // page itself is excluded, because that commit is the tab still being
         // on the refused name.
         if (tab.blockedUrl && !this.#isBlockPage(url)) tab.blockedUrl = null;
+        // Left the results page by a route that did not go through navigate()
+        // (a redirect, a restored session): the tab no longer stands for a query.
+        if (tab.searchQuery != null && !this.#isSearchPage(url)) tab.searchQuery = null;
         // The ledger is reset by the request filter, which sees the document
         // request itself. This only keeps the known site current, for the window
         // between the request and the commit.
@@ -586,7 +601,15 @@ class TabManager {
         this.#broadcast();
       }
     });
-    wc.on("did-navigate-in-page", (_event) => this.#broadcast());
+    wc.on("did-navigate-in-page", (_event, url, isMainFrame) => {
+      // The results page's own search box submits by writing "#q=" onto this
+      // document, which navigate() never sees. Read it back and search again.
+      if (isMainFrame && tab.searchQuery != null && this.#isSearchPage(url)) {
+        const next = this.#searchQueryFromUrl(url);
+        if (next && next !== tab.searchQuery) this.#startSearch(tab, next);
+      }
+      this.#broadcast();
+    });
     wc.on("page-favicon-updated", () => this.#broadcast());
     wc.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
       if (!isMainFrame || code === -3) return; // -3 is an aborted load
@@ -781,6 +804,7 @@ class TabManager {
 // every single new tab.
   #loadNewTab(tab) {
     tab.title = "New tab";
+    tab.searchQuery = null;
     return tab.view.webContents.loadFile(RENDERER_DIR + "/newtab.html").catch((error) => {
       // Closing a tab tears its view down mid-load; that is not a failure.
       if (!this.tabs.has(tab.id)) return;
@@ -800,9 +824,18 @@ class TabManager {
 
     let target = requested;
     const looksLikeUrl = /^[a-z][a-z0-9+.-]*:|^\/\//i.test(requested) || requested.includes(".");
-    if (!looksLikeUrl && this.config.searchUrl) {
-      target = this.config.searchUrl.replace("%s", encodeURIComponent(requested));
+    if (!looksLikeUrl) {
+      // Anything that is not an address is a query, and a query is answered by
+      // this shell rather than by a third-party engine.
+      if (!this.#searchEnabled()) {
+        throw new Error("search is switched off; enter an address");
+      }
+      return this.#startSearch(tab, requested);
     }
+
+    // A real navigation leaves the results page behind, so the tab stops
+    // reporting the last query as its address.
+    tab.searchQuery = null;
 
     // The refusal runs ahead of the policy: this name is never looked up at all,
     // and the tab gets the explanation rather than a thrown error. A create()
@@ -832,6 +865,98 @@ class TabManager {
     return this.describe(tab);
   }
 
+  // --- the shell's own search ----------------------------------------------
+  //
+  // A query never leaves the machine for a third-party engine. It goes to the
+  // fixed set of public APIs in search.js, and the merged list is shown on the
+  // shell's own page in this same tab. The page is a plain file with no bridge;
+  // the results reach it as data through executeJavaScript, so nothing a source
+  // returns can turn into a capability.
+
+  #searchEnabled() {
+    const cfg = this.config.search;
+    // Absent means "the shell was handed a config that predates search", which
+    // the tests do; that stays off. Once the key is there, it is on unless
+    // explicitly disabled, so a partial override still searches.
+    return Boolean(cfg && cfg.enabled !== false);
+  }
+
+  #searchOptions() {
+    const cfg = this.config.search || {};
+    const options = { timeoutMs: cfg.timeoutMs };
+    if (Number.isFinite(cfg.limit)) options.limit = cfg.limit;
+    if (Number.isFinite(cfg.perSource)) options.perSource = cfg.perSource;
+    if (Array.isArray(cfg.sources) && cfg.sources.length) options.order = cfg.sources;
+    return options;
+  }
+
+  #isSearchPage(url) {
+    return typeof url === "string"
+      && (url === SEARCH_PAGE_URL || url.startsWith(`${SEARCH_PAGE_URL}?`));
+  }
+
+  // The in-page search box submits by writing "#q=" onto this page's own address,
+  // which is a same-document navigation: no reload, no bridge, and the shell
+  // just reads the query back out of the URL and searches again.
+  #searchQueryFromUrl(url) {
+    const hash = String(url || "").split("#")[1] || "";
+    const value = new URLSearchParams(hash).get("q");
+    return value ? value.trim() : "";
+  }
+
+  async #startSearch(tab, query) {
+    if (!tab || !this.tabs.has(tab.id)) return this.describe(tab);
+    const text = String(query == null ? "" : query).trim();
+    const wc = tab.view.webContents;
+    if (wc.isDestroyed()) return this.describe(tab);
+
+    // The query is what the address bar shows and what this tab is "on"; a
+    // search is not recorded in the session file, because a saved session that
+    // reopens onto the operator's queries is a search history.
+    tab.searchQuery = text;
+    tab.blockedUrl = null;
+    tab.pendingUrl = text;
+    tab.title = text || "Search";
+    this.#broadcast();
+
+    const token = (tab.searchToken || 0) + 1;
+    tab.searchToken = token;
+
+    const render = () => {
+      const session = this.#partitionSession(tab.profile);
+      const fetchImpl = (url, init) => session.fetch(url, init);
+      return search(text, { ...this.#searchOptions(), fetchImpl }).then((payload) => {
+        if (!this.tabs.has(tab.id) || wc.isDestroyed()) return;
+        // The token lets the page drop an older answer that arrives after a
+        // newer one when the operator edits the query quickly.
+        payload.token = token;
+        const script =
+          `window.__blacknetSearch && window.__blacknetSearch.render(${JSON.stringify(payload)});`;
+        return wc.executeJavaScript(script, true).catch((error) => {
+          if (!this.tabs.has(tab.id)) return;
+          this.log(`tab ${tab.id} search render failed: ${error.message}`);
+        });
+      }).catch((error) => this.log(`tab ${tab.id} search failed: ${error.message}`));
+    };
+
+    // Already showing the results page: updating the query is a re-render, not a
+    // reload, so the page keeps its scroll position machinery and just repaints.
+    if (this.#isSearchPage(wc.getURL())) {
+      render();
+      return this.describe(tab);
+    }
+
+    await wc.loadFile(SEARCH_PAGE, { query: { q: text } }).catch((error) => {
+      if (!this.tabs.has(tab.id)) return;
+      this.log(`tab ${tab.id} search page failed: ${error.message}`);
+    });
+    // Deliberately not awaited: the page is up and the address bar is answered
+    // the moment the document has loaded. Results stream in when the sources
+    // answer, and a slow or dead source cannot freeze the omnibox.
+    render();
+    return this.describe(tab);
+  }
+
   go(id, delta) {
     const tab = this.tabs.get(id || this.activeId);
     if (!tab) return null;
@@ -855,11 +980,21 @@ class TabManager {
       tab.crashExitCode = null;
       if (back) {
         this.log(`tab ${tab.id} reloading after crash: ${back}`);
+        // A crash on the results page is put back as a search, not as the bare
+        // document: the query is still on the tab, and reloading the file would
+        // only bring back the skeleton.
+        if (tab.searchQuery != null && this.#isSearchPage(back)) {
+          return this.#startSearch(tab, tab.searchQuery);
+        }
         return this.navigate(tab.id, back);
       }
       tab.view.webContents.reloadIgnoringCache(hard);
       return this.describe(tab);
     }
+    // Reloading the results page re-runs the query. Reloading the document
+    // alone would repaint the skeleton and leave it there: the results were
+    // pushed in by the shell, not fetched by the page itself.
+    if (tab.searchQuery != null) return this.#startSearch(tab, tab.searchQuery);
     tab.view.webContents.reloadIgnoringCache(hard);
     return this.describe(tab);
   }

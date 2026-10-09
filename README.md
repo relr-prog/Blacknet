@@ -32,6 +32,7 @@ machine for; it never needed a second language runtime to do it.
 | Feature | State |
 | --- | --- |
 | Tabs, profiles, navigation, address bar | Working |
+| Search | Working. The shell's own meta-search, run in the main process: a query fans out to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub) and the merged, de-duplicated list is shown on a built-in results page. No third-party engine and no API key. It searches those named sources, not "the whole web" — indexing everything would mean scraping an engine, which is the dependency this removes |
 | Tracker blocking (56 rules) with a live per-tab count | Working |
 | Privacy grade (0-100) and host-level report, JSON export | Working, **not persisted** — it is cleared on exit |
 | Rotating proxy: start/stop, health probing, exit IP display | Working. Real rotation needs real provider credentials (see below) |
@@ -93,8 +94,12 @@ pool of healthy upstreams that all resolve to one address is reported as
   It is transmitted exactly once per step-up.
 - Ordinary web tabs get no preload at all. Only the shell's own pages and the
   password hook's remote-content exception get a bridge.
+- Search runs in the main process: a query goes to a fixed set of public APIs,
+  and only the merged list reaches the results page. That page is a plain file
+  with no bridge, so nothing a source returns can turn into a capability.
 - Telemetry is host-level and in memory: no full URLs, paths or query strings are
-  stored or exported.
+  stored or exported. Search queries are not written to the session file either,
+  because a saved session that reopens onto them is a search history.
 
 ## Requirements
 
@@ -122,8 +127,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (254)
-npm run smoke                  # real Electron window, headless, 100 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (268)
+npm run smoke                  # real Electron window, headless, 103 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

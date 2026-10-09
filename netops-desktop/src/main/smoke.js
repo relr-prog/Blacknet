@@ -1073,6 +1073,62 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     );
     await call("netops:tabs:close", linkTab.id);
 
+    // The shell's own search: a query is answered by the main process and shown
+    // on the shell's own page - no third-party engine stands in for it. Offline
+    // the sources simply do not answer; what is checked is that the query stays
+    // the address, the page is ours, it gets the results as data, and its own
+    // box re-searches through the address rather than through a bridge.
+    const searchTab = await call("netops:tabs:create");
+    const searchView = getViews().tab(searchTab.id);
+    await call("netops:tabs:navigate", searchTab.id, "blacknet smoke query");
+    const searchEntry = (await call("netops:tabs:list")).find((tab) => tab.id === searchTab.id);
+    check(
+      "a query searches on the shell's own page",
+      Boolean(searchEntry)
+        && searchEntry.url === "blacknet smoke query"
+        && searchView.webContents.getURL().includes("search.html"),
+      searchEntry
+        ? `url ${searchEntry.url}, page ${searchView.webContents.getURL().split("/").pop()}`
+        : "tab gone",
+    );
+
+    // The results are pushed in after the page loads, so wait for the shell's
+    // answer to reach the DOM rather than reading the skeleton.
+    let searchMeta = "";
+    for (let i = 0; i < 120; i += 1) {
+      searchMeta = await searchView.webContents.executeJavaScript(
+        'document.getElementById("meta").textContent',
+      );
+      if (searchMeta.includes("blacknet smoke query")) break;
+      await sleep(100);
+    }
+    const searchDom = await searchView.webContents.executeJavaScript(`(() => ({
+      bridged: typeof window.__blacknetSearch === "object",
+      hasNetops: typeof window.netops !== "undefined",
+      q: document.getElementById("q") ? document.getElementById("q").value : null,
+    }))()`);
+    check(
+      "the results page has no bridge, shows the query and received the answer",
+      searchDom.bridged === true
+        && searchDom.hasNetops === false
+        && searchDom.q === "blacknet smoke query"
+        && searchMeta.includes("blacknet smoke query"),
+      JSON.stringify({ ...searchDom, meta: searchMeta }),
+    );
+
+    await searchView.webContents.executeJavaScript(`(() => {
+      document.getElementById("q").value = "second smoke query";
+      document.getElementById("form").dispatchEvent(new Event("submit", { cancelable: true }));
+    })()`);
+    await sleep(300);
+    const searchEntry2 = (await call("netops:tabs:list")).find((tab) => tab.id === searchTab.id);
+    check(
+      "the in-page box re-searches through the address",
+      Boolean(searchEntry2) && searchEntry2.url === "second smoke query",
+      searchEntry2 ? `url ${searchEntry2.url}` : "tab gone",
+    );
+    await call("netops:tabs:close", searchTab.id);
+
     // Maximizing must carry the chrome and the page with it. Electron emits
     // "resize" before the new content size is committed, so a synchronous layout
     // handler used the pre-maximize width and left the tab strip short of the
