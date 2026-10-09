@@ -28,6 +28,19 @@ const DEFAULTS = {
     timeoutMs: 6000,
   },
   blockPrivateHosts: true,
+  // The shell's own client for the local circuit daemon. The browser refuses a
+  // name in the refused family up front, so the shell keeps its own way to reach
+  // one; this is the one internal job it does with it - prove the circuit
+  // actually carries a request rather than only holding a port open. Off by
+  // default: the daemon is started only when a profile asks for it. selfCheckUrl
+  // may be any http(s) URL the daemon should reach; the default proves the
+  // circuit works without leaning on a name that only exists inside it.
+  circuit: {
+    enabled: false,
+    selfCheckUrl: "https://example.com/",
+    selfCheckIntervalMs: 300000,
+    timeoutMs: 30000,
+  },
 
   // --- privacy ------------------------------------------------------------
   blockTrackers: true,

@@ -22,6 +22,7 @@ const { Reauth } = require("./reauth");
 const { PasswordManager } = require("./credentials");
 const { PasswordWatcher } = require("./passwordWatcher");
 const { IPRotatorService } = require("./ipRotator");
+const { CrSelfCheck } = require("./crSelfCheck");
 
 const logLines = [];
 // How often the shell re-checks the session cookie. The dashboard can change the
@@ -48,6 +49,7 @@ let reauth = null;
 let passwords = null;
 let watcher = null;
 let ipRotator = null;
+let selfCheck = null;
 let sessionStore = null;
 
 // The shape the password manager expects for copying. It used to hang off the
@@ -104,6 +106,12 @@ function buildFeatureModules(userData, browserConfig) {
   // deliberately not routed through the control plane: a browser should not need
   // a second language runtime and a localhost web server to switch a proxy on.
   ipRotator = new IPRotatorService({ log });
+
+  // The shell's own reachability self-check does one internal job: when a
+  // profile wants the local client, prove it actually carries a request. It is
+  // constructed always and does nothing until started, and it starts only when
+  // the profile asked for it, so this costs nothing on a normal launch.
+  selfCheck = new CrSelfCheck({ log, config: browserConfig, userDataPath: userData });
 
   identity = new Identity({ userDataPath: userData, log });
   const profile = identity.ensure();
@@ -484,6 +492,12 @@ if (!app.requestSingleInstanceLock()) {
         })
         .catch((error) => log(`ip-rotator: ${error.message}`));
     }
+
+    // The reachability self-check is its own client, not a second gateway: it is
+    // disabled unless the profile asked for it, and it never blocks first paint.
+    selfCheck
+      .start()
+      .catch((error) => log(`cr-self-check: ${error.message}`));
 
     if (process.argv.includes("--smoke")) {
       const { runSmoke } = require("./smoke");
