@@ -13,7 +13,7 @@ test("the hardening set is the expected, deduplicated switches", () => {
   const names = SWITCHES.map((s) => s.name);
   assert.deepEqual(names, [
     "no-pings",
-    "dns-prefetch-disable",
+    "enable-features",
     "force-webrtc-ip-handling-policy",
     "disable-background-networking",
   ]);
@@ -23,6 +23,15 @@ test("the hardening set is the expected, deduplicated switches", () => {
 test("the WebRTC policy is pinned to refusing non-proxied UDP", () => {
   const policy = SWITCHES.find((s) => s.name === "force-webrtc-ip-handling-policy");
   assert.equal(policy.value, "disable_non_proxied_udp");
+});
+
+test("referrer stripping is the NoReferrers feature, not a made-up switch", () => {
+  // Chromium has no --no-referrers and no --dns-prefetch-disable. The referrer
+  // rule is a feature, so it must ride through --enable-features, and no entry
+  // may claim a switch that does not exist.
+  const features = SWITCHES.find((s) => s.name === "enable-features");
+  assert.equal(features.value, "NoReferrers");
+  assert.equal(SWITCHES.some((s) => s.name === "dns-prefetch-disable"), false);
 });
 
 test("switches() hands back a copy, not the list itself", () => {
@@ -41,7 +50,7 @@ test("apply() puts every switch on the command line with the right value", () =>
   apply(app);
   assert.deepEqual(seen, [
     ["no-pings", undefined],
-    ["dns-prefetch-disable", undefined],
+    ["enable-features", "NoReferrers"],
     ["force-webrtc-ip-handling-policy", "disable_non_proxied_udp"],
     ["disable-background-networking", undefined],
   ]);

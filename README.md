@@ -42,7 +42,8 @@ machine for; it never needed a second language runtime to do it.
 | Settings schema | One typed table; reads and writes validated identically |
 | `.onion` addresses refused before any request | Working. The tab keeps the address and shows a "site can't be reached" page; the rule is main-process knowledge and is never put on the IPC map |
 | Shell-side circuit self-check | Working, off by default. The shell's own client proves the local circuit carries a request instead of trusting an open port; main-process only and never on the IPC map |
-| Chromium hardening defaults (LibreWolf-aligned) | Working. `no-pings`, DNS-prefetch off, WebRTC non-proxied UDP refused, background networking off. The rest of LibreWolf's privacy defaults are already this shell's own policy (see config) |
+| Chromium hardening defaults (LibreWolf-aligned) | Working. `no-pings`, referrers stripped (the `NoReferrers` feature, since Chromium has no switch for it), WebRTC non-proxied UDP refused, background networking off. The rest of LibreWolf's privacy defaults are already this shell's own policy (see config) |
+| Clock pinned to UTC | Working, best-effort. `Date.getTimezoneOffset` and `Intl.DateTimeFormat().resolvedOptions().timeZone` answer UTC in every tab, injected at document start into the page's own world (no preload, so the no-bridge rule holds) and the process `TZ` is set at startup. Engine-level formatting paths are out of reach, so it is one switch among many rather than a guarantee |
 | Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 45 JVM tests |
 | History (Android) | Working. Local SQLite, newest first, one row per URL, capped at 2000: tap to open, long-press to delete, Clear empties it. Refused targets and tracker URLs are never recorded |
 
@@ -129,7 +130,7 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (280)
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (289)
 npm run smoke                  # real Electron window, headless, 103 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 

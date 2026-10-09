@@ -12,12 +12,19 @@
 // tracker and web-beacon blocking, resist-fingerprinting, denying permissions by
 // default, disabling WebRTC, blocking private-range and refused names.
 //
+// Each entry is a real, current Chromium switch or feature. Referrer stripping
+// and DNS-prefetch suppression are checked against Chromium's own list: the
+// referrer rule is the NoReferrers feature (there is no switch for it), and
+// there is no command-line switch to disable DNS prefetching any more, so that
+// intent is deliberately left out rather than asserted.
+//
 // Kept as data, so the list can be asserted without starting Electron.
 const SWITCHES = [
   // browser.send_pings=false - no <a ping> hyperlink auditing.
   { name: "no-pings" },
-  // network.dns.disablePrefetch=true - no speculative DNS lookups.
-  { name: "dns-prefetch-disable" },
+  // network.http.referer.XOriginPolicy=2 - no cross-site referrer. A feature,
+  // not a switch, so it is enabled rather than appended bare.
+  { name: "enable-features", value: "NoReferrers" },
   // media.peerconnection.ice.no_host / default_address_only - WebRTC may not
   // route around the proxy to learn the real address. Only non-proxied UDP is
   // refused; a page that legitimately needs WebRTC over TCP still works.

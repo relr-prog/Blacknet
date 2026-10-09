@@ -24,9 +24,13 @@ const { PasswordWatcher } = require("./passwordWatcher");
 const { IPRotatorService } = require("./ipRotator");
 const { CrSelfCheck } = require("./crSelfCheck");
 const { apply: applyHardening } = require("./hardening");
+const { pinEnvironment } = require("./timezone");
 
 // Chromium reads its command line once, at startup, so the hardening switches
 // are applied here - before the app is ready, not from a window or a service.
+// The process clock is pinned at the same moment: it must be UTC before any
+// renderer is spawned.
+pinEnvironment();
 applyHardening(app);
 
 const logLines = [];

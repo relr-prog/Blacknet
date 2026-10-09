@@ -13,6 +13,7 @@ const { internalPage, RENDERER_DIR } = require("./internal-pages");
 const { Ledger, registrable, hostOf } = require("./ledger");
 const { onionHost } = require("./onion");
 const { search } = require("./search");
+const { attach: attachClock } = require("./timezone");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -520,6 +521,14 @@ class TabManager {
       },
     });
     view.setBackgroundColor("#1e222a");
+
+    // Pin the page's clock to UTC before anything loads, so a page cannot read
+    // the operator's timezone. Best-effort, main world, document start - see
+    // timezone.js. No preload is involved, so the "no bridge in a tab" rule
+    // still holds.
+    if (this.config.resistFingerprinting !== false) {
+      attachClock(view.webContents, (message) => this.log(message));
+    }
 
     const tab = {
       id,
