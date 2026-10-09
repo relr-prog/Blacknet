@@ -95,6 +95,9 @@ for f in "${tracked[@]}"; do
   [ -f "$f" ] || continue
   case "$f" in
     *.png|*.ico|*.db|*.node|*.so|*.woff|*.woff2) continue ;;
+    # Compiled/archived binaries. The Gradle wrapper ships a .jar, which is not
+    # text at all; a byte scan for CR in it is meaningless and always "fails".
+    *.jar) continue ;;
   esac
   if LC_ALL=C grep -qU $'\r' -- "$f" 2>/dev/null; then
     fail "CR bytes in a text file (CRLF damage?): $f"
