@@ -22,21 +22,42 @@
       <header class="searchbar">
         <img class="mark" src="../../assets/icons/blacknet-32.png" alt="" width="24" height="24" />
         <form id="form" role="search" autocomplete="off">
-          <input
-            id="q"
-            type="search"
-            name="q"
-            placeholder="Search"
-            aria-label="Search"
-            spellcheck="false"
-          />
+          <span class="field">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.4" y1="16.4" x2="21" y2="21" />
+            </svg>
+            <input
+              id="q"
+              type="search"
+              name="q"
+              placeholder="Search public sources"
+              aria-label="Search"
+              spellcheck="false"
+            />
+          </span>
           <button type="submit">Search</button>
         </form>
       </header>
 
-      <p class="meta" id="meta">Searching&hellip;</p>
+      <p class="meta busy" id="meta">Searching&hellip;</p>
+
+      <!-- Decorative placeholder shown while the shell is querying. It carries
+           no information, so it is aria-hidden and swapped out on the first
+           answer. -->
+      <div class="skeleton" id="skeleton" aria-hidden="true">
+        <div class="sk"><span class="sk-title"></span><span class="sk-line"></span><span class="sk-line short"></span></div>
+        <div class="sk"><span class="sk-title"></span><span class="sk-line"></span></div>
+        <div class="sk"><span class="sk-title"></span><span class="sk-line short"></span></div>
+      </div>
+
       <ol class="results" id="results"></ol>
-      <p class="empty" id="empty" hidden></p>
+
+      <div class="emptystate" id="empty" hidden>
+        <img class="art" src="../../assets/icons/blacknet-64.png" alt="" width="48" height="48" />
+        <p id="emptyText"></p>
+      </div>
+
       <p class="sources" id="sources"></p>
     </main>
     <script src="search.js"></script>

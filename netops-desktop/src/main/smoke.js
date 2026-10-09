@@ -1055,7 +1055,13 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     await linkView.webContents.loadURL(linkPage);
     await waitForLoad(linkView);
     await waitForLoad(linkView);
-    await linkView.webContents.executeJavaScript("document.getElementById('go').click()");
+    // The click starts a navigation, and that navigation can abort the very
+    // script that started it - so the promise this returns may reject with
+    // ERR_ABORTED even though the click worked. The result is checked by name
+    // below (the refusal text and the tab's URL), not by this promise.
+    await linkView.webContents
+      .executeJavaScript("document.getElementById('go').click()")
+      .catch(() => {});
     const linkText = await waitForText(linkView, /This site can't be reached/);
     const linkEntry = (await call("netops:tabs:list")).find((tab) => tab.id === linkTab.id);
     check(

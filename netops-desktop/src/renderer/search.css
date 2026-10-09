@@ -4,14 +4,18 @@
    chrome.css is written for the floating toolbar and locks the document to the
    viewport, disables selection and centres controls. A results page is the
    opposite of that: it scrolls, its text is selectable, and it is laid out as a
-   column rather than as a strip of chrome, so those defaults are undone here. */
+   column rather than as a strip of chrome, so those defaults are undone here.
+
+   The polish is deliberately light: one quiet transition on the cards, a
+   shimmer while a query is in flight, and results that rise in as they arrive.
+   Everything animated is switched off for readers who ask for reduced motion. */
 
 body.search {
   display: block;
   height: auto;
   min-height: 100vh;
   overflow: auto;
-  padding: 0 0 48px;
+  padding: 0 0 56px;
   color: var(--text);
   background: var(--bg);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -19,20 +23,21 @@ body.search {
 }
 
 body.search main {
-  width: min(44rem, 100%);
+  width: min(46rem, 100%);
   margin: 0 auto;
   padding: 0 20px;
 }
 
-/* --- the in-page search box --------------------------------------------- */
+/* --- the search box ------------------------------------------------------ */
 
 body.search .searchbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 18px 0 14px;
   position: sticky;
   top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0 14px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
@@ -50,35 +55,67 @@ body.search form {
   min-width: 0;
 }
 
+body.search .field {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+body.search .icon {
+  position: absolute;
+  left: 11px;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
 body.search input[type="search"] {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.85rem 0.55rem 2.1rem;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+body.search input[type="search"]::placeholder {
+  color: var(--muted);
 }
 
 body.search input[type="search"]:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 body.search button {
   flex: 0 0 auto;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
+  padding: 0.55rem 1.05rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease;
 }
 
 body.search button:hover {
-  background: var(--raised);
+  filter: brightness(1.08);
+}
+
+body.search button:active {
+  transform: translateY(1px);
 }
 
 body.search button:focus-visible {
@@ -86,28 +123,114 @@ body.search button:focus-visible {
   outline-offset: 2px;
 }
 
-/* --- results ------------------------------------------------------------- */
+/* --- status line --------------------------------------------------------- */
 
 body.search .meta {
-  margin: 14px 0 4px;
+  margin: 16px 0 4px;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
+body.search .meta.busy::after {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 8px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- loading skeleton ---------------------------------------------------- */
+
+body.search .skeleton {
+  margin-top: 14px;
+}
+
+body.search .sk + .sk {
+  margin-top: 22px;
+}
+
+body.search .sk-title,
+body.search .sk-line {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface), var(--raised), var(--surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+body.search .sk-title {
+  width: 42%;
+  height: 16px;
+  margin-bottom: 10px;
+}
+
+body.search .sk-line {
+  width: 100%;
+}
+
+body.search .sk-line.short {
+  width: 68%;
+  margin-top: 8px;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* --- results ------------------------------------------------------------- */
+
 body.search .results {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
 }
 
 body.search .result {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  animation: rise 260ms ease both;
+}
+
+body.search .result + .result {
+  margin-top: 6px;
+}
+
+body.search .result:hover {
+  background: var(--surface);
+  border-color: var(--line);
+  transform: translateY(-1px);
+}
+
+body.search .result:nth-child(1) { animation-delay: 0ms; }
+body.search .result:nth-child(2) { animation-delay: 30ms; }
+body.search .result:nth-child(3) { animation-delay: 60ms; }
+body.search .result:nth-child(4) { animation-delay: 90ms; }
+body.search .result:nth-child(5) { animation-delay: 120ms; }
+body.search .result:nth-child(6) { animation-delay: 150ms; }
+body.search .result:nth-child(n + 7) { animation-delay: 180ms; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 body.search .result a {
   color: var(--accent);
   font-size: 1.05rem;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -115,9 +238,22 @@ body.search .result a:hover {
   text-decoration: underline;
 }
 
+body.search .where {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  vertical-align: 1px;
+}
+
 body.search .url {
   display: block;
-  margin-top: 2px;
+  margin-top: 3px;
   color: var(--muted);
   font-family: ui-monospace, "Cascadia Mono", monospace;
   font-size: 0.78rem;
@@ -125,30 +261,57 @@ body.search .url {
 }
 
 body.search .snippet {
-  margin: 6px 0 0;
+  margin: 7px 0 0;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
-body.search .where {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
+/* --- empty state --------------------------------------------------------- */
+
+body.search .emptystate {
+  padding: 44px 0;
+  text-align: center;
   color: var(--muted);
-  font-size: 0.7rem;
-  vertical-align: middle;
 }
 
-body.search .empty {
-  margin: 18px 0 0;
-  color: var(--muted);
+body.search .emptystate .art {
+  opacity: 0.75;
+  margin-bottom: 12px;
+  -webkit-user-drag: none;
+  user-select: none;
 }
+
+body.search .emptystate p {
+  margin: 0;
+}
+
+/* --- footer -------------------------------------------------------------- */
 
 body.search .sources {
-  margin: 22px 0 0;
+  margin: 26px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+/* --- motion opt-out ------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  body.search .result,
+  body.search .sk-title,
+  body.search .sk-line,
+  body.search .meta.busy::after {
+    animation: none;
+  }
+
+  body.search input[type="search"],
+  body.search button,
+  body.search .result {
+    transition: none;
+  }
+
+  body.search .result:hover {
+    transform: none;
+  }
 }

@@ -21,7 +21,9 @@ const input = document.getElementById("q");
 const form = document.getElementById("form");
 const list = document.getElementById("results");
 const meta = document.getElementById("meta");
+const skeleton = document.getElementById("skeleton");
 const empty = document.getElementById("empty");
+const emptyText = document.getElementById("emptyText");
 const sources = document.getElementById("sources");
 
 let current = params.get("q") || "";
@@ -29,12 +31,25 @@ let lastToken = 0;
 input.value = current;
 if (current) document.title = `${current} - BlackNet Search`;
 
+// The quiet "working on it" state, shown on first paint and again when the box
+// submits a new query. It deliberately does not name the query: the answer line
+// is what carries the query, so a reader cannot mistake the skeleton for the
+// result.
+function showBusy() {
+  meta.classList.add("busy");
+  meta.textContent = "Searching\u2026";
+  list.textContent = "";
+  empty.hidden = true;
+  skeleton.hidden = false;
+}
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const next = input.value.trim();
   if (!next || next === current) return;
   // The shell reads the query back off the address on a same-document
   // navigation. Writing the hash is the whole submission: no bridge needed.
+  showBusy();
   window.location.hash = `q=${encodeURIComponent(next)}`;
 });
 
@@ -86,6 +101,8 @@ function render(payload) {
   list.textContent = "";
   for (const result of results) list.append(buildResult(result));
 
+  skeleton.hidden = true;
+  meta.classList.remove("busy");
   meta.textContent = results.length
     ? `${results.length} result${results.length === 1 ? "" : "s"} for \u201c${current}\u201d`
     : (payload.answered && payload.answered.length
@@ -93,7 +110,7 @@ function render(payload) {
       : `Nothing answered for \u201c${current}\u201d`);
 
   empty.hidden = results.length > 0;
-  empty.textContent = payload.answered && payload.answered.length
+  emptyText.textContent = payload.answered && payload.answered.length
     ? "No source matched this query. Try different wording."
     : "No source could be reached. The shell searches public APIs, so check the connection.";
 
