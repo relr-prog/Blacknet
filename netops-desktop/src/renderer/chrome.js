@@ -13,6 +13,7 @@ const statusLine = document.getElementById("status");
 const lockIcon = document.getElementById("lock");
 const audioIcon = document.getElementById("audio");
 const star = document.getElementById("star");
+const zoomChip = document.getElementById("zoom");
 const bookmarksbar = document.getElementById("bookmarksbar");
 const findbar = document.getElementById("findbar");
 const findInput = document.getElementById("find-input");
@@ -157,6 +158,20 @@ function renderActive() {
   star.disabled = !bookmarkable;
   star.classList.toggle("on", marked);
   star.title = marked ? "Remove bookmark" : "Bookmark this tab";
+
+  // The zoom chip is the size of the active tab's site; hidden at 100%, so its
+  // presence alone says "this site is not the default size".
+  renderZoom(active && active.zoom ? Math.round(active.zoom * 100) : 100);
+}
+
+// --- zoom -----------------------------------------------------------------
+// Per-site zoom lives in the main process; this only shows the number and asks
+// for a change. A value of 100 hides the chip.
+function renderZoom(percent) {
+  const value = Math.round(Number(percent) || 100);
+  zoomChip.hidden = value === 100;
+  zoomChip.textContent = `${value}%`;
+  zoomChip.title = `Zoom ${value}% - click to reset (Ctrl+0)`;
 }
 
 // --- bookmarks bar --------------------------------------------------------
@@ -302,6 +317,11 @@ window.netops.subscribe("netops:find", ({ tabId, activeMatchOrdinal, matches }) 
   findCount.classList.toggle("empty", matches === 0);
 });
 
+window.netops.subscribe("netops:zoom", ({ tabId, percent }) => {
+  if (tabId !== state.activeId) return;
+  renderZoom(percent);
+});
+
 window.netops.subscribe("netops:blocked", ({ url, reason }) => {
   setStatus(`blocked ${hostOf(url)} - ${reason}`, true);
 });
@@ -341,6 +361,15 @@ star.addEventListener("click", () =>
     state.bookmarks = result.items;
     renderBookmarks();
     renderActive();
+  }),
+);
+
+// Clicking the zoom number resets the site to 100%. The keyboard shortcuts for
+// zoom in/out live below, next to the other chrome-focus shortcuts.
+zoomChip.addEventListener("click", () =>
+  run(async () => {
+    const result = unwrap(await window.netops.tabs.zoom(state.activeId, "reset"));
+    if (result) renderZoom(result.percent);
   }),
 );
 
@@ -466,6 +495,26 @@ window.addEventListener("keydown", (event) => {
     // delivered as netops:find-open; this branch covers the chrome's own focus.
     event.preventDefault();
     openFind();
+  } else if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+")) {
+    // The same zoom shortcuts as the page branch in tabs.js, for when the
+    // chrome itself has the keyboard.
+    event.preventDefault();
+    run(async () => {
+      const result = unwrap(await window.netops.tabs.zoom(state.activeId, "in"));
+      if (result) renderZoom(result.percent);
+    });
+  } else if ((event.ctrlKey || event.metaKey) && event.key === "-") {
+    event.preventDefault();
+    run(async () => {
+      const result = unwrap(await window.netops.tabs.zoom(state.activeId, "out"));
+      if (result) renderZoom(result.percent);
+    });
+  } else if ((event.ctrlKey || event.metaKey) && event.key === "0") {
+    event.preventDefault();
+    run(async () => {
+      const result = unwrap(await window.netops.tabs.zoom(state.activeId, "reset"));
+      if (result) renderZoom(result.percent);
+    });
   } else if (!typing && event.key === "F6") {
     event.preventDefault();
     run(() => window.netops.tabs.create({}));

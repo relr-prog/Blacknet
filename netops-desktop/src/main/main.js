@@ -17,6 +17,7 @@ const { Native, native: addon } = require("./native");
 const { TabManager, CHROME_HEIGHT } = require("./tabs");
 const { Session } = require("./session");
 const { Bookmarks } = require("./bookmarks");
+const { Zoom } = require("./zoom");
 const { Settings } = require("./settings");
 const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
@@ -62,6 +63,7 @@ let ipRotator = null;
 let selfCheck = null;
 let sessionStore = null;
 let bookmarks = null;
+let zoomStore = null;
 // The chrome view's height. Normally CHROME_HEIGHT, but the renderer reports its
 // own height when a row it owns (the bookmarks bar) appears or disappears, so the
 // page below it is always offset by the truth rather than by a guess.
@@ -222,6 +224,9 @@ async function createWindow() {
   // The tab manager needs the window, and the chrome needs working IPC
   // handlers, so both come before chrome.html is loaded - otherwise the
   // renderer's first invokes race an empty handler table.
+  // Per-site zoom levels, read on launch and applied as each tab commits. Built
+  // before the tab manager so a restored tab opens at the remembered size.
+  zoomStore = new Zoom({ userDataPath: userData, log });
   tabs = new TabManager({
     window: win,
     native: core,
@@ -230,6 +235,9 @@ async function createWindow() {
     captureEnabled,
     send: sendToChrome,
     ipRotator,
+    // Per-site zoom: Ctrl +/-/0 on a page is remembered for that origin, so a
+    // site reopens at the size the operator left it.
+    zoom: zoomStore,
     // A Ctrl+F pressed while a page has the keyboard has to put the keyboard
     // into the chrome's find bar, which means focusing the chrome view itself.
     focusChrome: () => {

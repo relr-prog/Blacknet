@@ -15,6 +15,7 @@ const { onionHost } = require("./onion");
 const { search } = require("./search");
 const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
+const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -73,6 +74,7 @@ class TabManager {
     ipRotator,
     sessionFromPartition,
     focusChrome,
+    zoom,
   }) {
     this.window = win;
     this.native = native;
@@ -97,6 +99,11 @@ class TabManager {
     // Injected by main.js: gives keyboard focus to the chrome view so its find
     // bar can take what the operator types after a page-level Ctrl+F.
     this.focusChrome = typeof focusChrome === "function" ? focusChrome : () => {};
+    // Injected by main.js: the per-site zoom store. Optional so a plain-node test
+    // process without one still exercises everything else; absent, every site
+    // stays at 100%. Kept as zoomStore, not zoom: a field named zoom would shadow
+    // the zoom() method below.
+    this.zoomStore = zoom || null;
     // The height the chrome view above the page occupies. It is normally
     // CHROME_HEIGHT, but the chrome reports its own height so a row it shows
     // (the bookmarks bar) can move the page down instead of overlapping it.
@@ -173,6 +180,13 @@ class TabManager {
       canGoForward: wc.navigationHistory.canGoForward(),
       blocked: tab.blockedCount,
       audioMuted: wc.isAudioMuted(),
+      // The page's current zoom, so the chrome can show the percentage for the
+      // tab that is becoming active without asking again. Guarded because the
+      // unit tests drive describe() against a partial webContents stub.
+      zoom:
+        wc.isDestroyed?.() || typeof wc.getZoomFactor !== "function"
+          ? ZOOM_DEFAULT
+          : wc.getZoomFactor(),
       proxy: tab.proxy || null,
       // Set only for the shell's own pages, so the chrome can tell that closing
       // Settings is what should lock the vault again.
@@ -637,13 +651,29 @@ class TabManager {
     wc.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown") return;
       const key = (input.key || "").toLowerCase();
-      if ((input.control || input.meta) && key === "f") {
+      const mod = input.control || input.meta;
+      if (mod && key === "f") {
         event.preventDefault();
         this.focusChrome();
         this.#emit("netops:find-open", { tabId: tab.id });
+      } else if (mod && (key === "=" || key === "+" || key === "add")) {
+        event.preventDefault();
+        this.zoom(tab.id, "in");
+      } else if (mod && (key === "-" || key === "subtract")) {
+        event.preventDefault();
+        this.zoom(tab.id, "out");
+      } else if (mod && key === "0") {
+        event.preventDefault();
+        this.zoom(tab.id, "reset");
       } else if (key === "escape") {
         this.#emit("netops:find-close", { tabId: tab.id });
       }
+    });
+    // Zoom is applied as the navigation starts, before the document commits, so a
+    // site with a remembered size does not paint once at 100% and then jump. The
+    // event carries the target URL, which is the origin to key on.
+    wc.on("did-start-navigation", (_event, url, _inPlace, isMainFrame) => {
+      if (isMainFrame) this.#applyZoom(tab, url);
     });
     wc.on("did-navigate", (_event, url, _inPlace, isMainFrame) => {
       if (isMainFrame) {
@@ -1095,6 +1125,46 @@ class TabManager {
     tab.view.webContents.stopFindInPage("clearSelection");
     tab.findRequestId = null;
     return this.describe(tab);
+  }
+
+  // --- per-site zoom --------------------------------------------------------
+
+  // The factor a page should open at, from the shared store. A page with no
+  // origin (a local file, a data: page) is left alone: those all report the same
+  // "null" origin, so remembering one would leak its size onto the next.
+  #applyZoom(tab, url) {
+    if (!this.zoomStore || !tab) return;
+    const wc = tab.view.webContents;
+    if (wc.isDestroyed()) return;
+    const origin = originOf(url || wc.getURL() || tab.pendingUrl || "");
+    wc.setZoomFactor(this.zoomStore.factorFor(origin));
+  }
+
+  // Steps the zoom for the tab's site, stores it, and applies it to every tab
+  // already on that site - the thing Chrome zooms is the site, not the tab.
+  // Handing the result back lets the chrome show the new size without re-reading.
+  zoom(id, direction) {
+    const tab = this.tabs.get(id || this.activeId);
+    if (!tab) return null;
+    const wc = tab.view.webContents;
+    const origin = originOf(wc.getURL() || tab.pendingUrl || "");
+    if (!origin) {
+      return { tabId: tab.id, origin: null, factor: ZOOM_DEFAULT, percent: 100, applied: 0 };
+    }
+    const factor = this.zoomStore ? this.zoomStore.next(origin, direction) : ZOOM_DEFAULT;
+    if (this.zoomStore) this.zoomStore.set(origin, factor);
+    let applied = 0;
+    for (const other of this.tabs.values()) {
+      const otherWc = other.view.webContents;
+      if (otherWc.isDestroyed()) continue;
+      if (originOf(otherWc.getURL() || other.pendingUrl || "") !== origin) continue;
+      otherWc.setZoomFactor(factor);
+      applied += 1;
+    }
+    const payload = { tabId: tab.id, origin, factor, percent: Math.round(factor * 100), applied };
+    this.#emit("netops:zoom", payload);
+    this.#broadcast();
+    return payload;
   }
 
   setMuted(id, muted) {

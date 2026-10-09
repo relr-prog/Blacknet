@@ -6,6 +6,7 @@
 // works anywhere Electron can start, WSLg included.
 
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 
 const OUT_DIR = path.join(__dirname, "..", "..", "build");
@@ -1160,6 +1161,76 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     );
     await call("netops:tabs:close", findTab.id);
     await call("netops:tabs:close", refused.id);
+
+    // Per-site zoom. Ctrl +/-/0 is remembered for the origin, so a site reopens
+    // at the size the operator left it. A local server gives a real origin: a
+    // data: page reports "null" and is deliberately not tracked by the store.
+    const zoomServer = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<!doctype html><title>Zoom smoke</title><p>zoom</p>");
+    });
+    await new Promise((resolve) => zoomServer.listen(0, "127.0.0.1", resolve));
+    const zoomOrigin = `http://127.0.0.1:${zoomServer.address().port}`;
+    try {
+      const zoomTab = await call("netops:tabs:create", { active: true });
+      const zoomView = getViews().tab(zoomTab.id);
+      await zoomView.webContents.loadURL(`${zoomOrigin}/`);
+      await waitForLoad(zoomView);
+      await sleep(300);
+
+      // Ctrl+plus in the chrome (which holds the keyboard while the address bar
+      // is in use) steps the active site to 110% and lights the chip.
+      await chromeView.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: '+', ctrlKey: true }))",
+      );
+      await sleep(300);
+      const zoomed = await chromeView.webContents.executeJavaScript(`(() => ({
+        hidden: document.getElementById('zoom').hidden,
+        text: document.getElementById('zoom').textContent,
+      }))()`);
+      check(
+        "Ctrl+plus zooms the site and shows the percentage",
+        !zoomed.hidden && zoomed.text === "110%",
+        JSON.stringify(zoomed),
+      );
+      check(
+        "the page itself is scaled to 110%",
+        Math.abs(zoomView.webContents.getZoomFactor() - 1.1) < 0.001,
+        String(zoomView.webContents.getZoomFactor()),
+      );
+
+      // A second tab on the same origin opens at the remembered size.
+      const sibling = await call("netops:tabs:create", { url: `${zoomOrigin}/two`, active: true });
+      const siblingView = getViews().tab(sibling.id);
+      await waitForLoad(siblingView);
+      await sleep(300);
+      check(
+        "another tab on the same site opens zoomed",
+        Math.abs(siblingView.webContents.getZoomFactor() - 1.1) < 0.001,
+        String(siblingView.webContents.getZoomFactor()),
+      );
+
+      // Ctrl+0 resets: both tabs back to 100%, the chip hidden again.
+      await chromeView.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true }))",
+      );
+      await sleep(300);
+      const resetHidden = await chromeView.webContents.executeJavaScript(
+        "document.getElementById('zoom').hidden",
+      );
+      check(
+        "Ctrl+0 resets the site to 100% and hides the chip",
+        resetHidden === true &&
+          Math.abs(zoomView.webContents.getZoomFactor() - 1) < 0.001 &&
+          Math.abs(siblingView.webContents.getZoomFactor() - 1) < 0.001,
+        `hidden=${resetHidden}`,
+      );
+
+      await call("netops:tabs:close", sibling.id);
+      await call("netops:tabs:close", zoomTab.id);
+    } finally {
+      await new Promise((resolve) => zoomServer.close(resolve));
+    }
 
     // The same refusal reached by following a link instead of typing it: the
     // request filter sees the navigation before Chromium builds it, so the tab

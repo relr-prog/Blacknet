@@ -34,6 +34,16 @@
           placeholder="Search or type an address"
         />
         <span id="status" aria-live="polite"></span>
+        <!-- Per-site zoom: only shown when the site is not at 100%, and clicking
+             it resets. Hidden at the default size so it is not noise. -->
+        <button
+          type="button"
+          id="zoom"
+          class="chip"
+          title="Reset zoom to 100% (Ctrl+0)"
+          aria-label="Reset zoom to 100%"
+          hidden
+        >100%</button>
         <button
           type="button"
           id="star"

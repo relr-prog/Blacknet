@@ -18,6 +18,7 @@ const EVENTS = [
   "netops:find",
   "netops:find-open",
   "netops:find-close",
+  "netops:zoom",
 ];
 
 contextBridge.exposeInMainWorld("netops", {
@@ -33,6 +34,8 @@ contextBridge.exposeInMainWorld("netops", {
     stop: (id) => ipcRenderer.invoke("netops:tabs:stop", id),
     find: (id, text, options) => ipcRenderer.invoke("netops:tabs:find", id, text, options || {}),
     findStop: (id) => ipcRenderer.invoke("netops:tabs:find-stop", id),
+    // direction is "in", "out" or "reset"; zoom is remembered per site.
+    zoom: (id, direction) => ipcRenderer.invoke("netops:tabs:zoom", id, direction),
     mute: (id, muted) => ipcRenderer.invoke("netops:tabs:mute", id, muted),
     // Opens a local page of the shell in a tab, optionally on a given view.
     internal: (name, options) => ipcRenderer.invoke("netops:tabs:internal", name, options),

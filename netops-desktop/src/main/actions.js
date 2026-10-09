@@ -69,6 +69,9 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
     // closes. The count is pushed back on the netops:find event, not returned.
     "netops:tabs:find": (id, text, options) => tabs.find(id, text, options || {}),
     "netops:tabs:find-stop": (id) => tabs.stopFind(id),
+    // Per-site zoom. direction is "in", "out" or "reset"; the new factor and
+    // percentage are pushed back on the netops:zoom event and also returned.
+    "netops:tabs:zoom": (id, direction) => tabs.zoom(id, direction),
     "netops:tabs:mute": (id, muted) => tabs.setMuted(id, muted),
     // Local pages of the shell, shown in a tab. The page name is validated
     // against a fixed table in tabs.js.

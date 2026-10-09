@@ -265,6 +265,29 @@ body {
   background: transparent;
 }
 
+/* The zoom chip inside the address field, shown only when the site is not at
+   100%. It is a button, so the number itself resets the size; the fill makes it
+   louder than the quiet star when it is present. */
+#zoom.chip {
+  flex: 0 0 auto;
+  min-width: 34px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#zoom.chip:hover {
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+}
+
 #bookmarksbar {
   display: flex;
   align-items: center;
