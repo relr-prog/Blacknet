@@ -1138,8 +1138,9 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     // Maximizing must carry the chrome and the page with it. Electron emits
     // "resize" before the new content size is committed, so a synchronous layout
     // handler used the pre-maximize width and left the tab strip short of the
-    // window edge. Nothing checked this before: the chrome view's bounds are
-    // compared against the window's real content size in both directions.
+    // window edge. The chrome is pinned to the window's real content width; the
+    // page below it is letterboxed to the grid and centered, so it is checked for
+    // the grid, the fit and the centering rather than for equality.
     if (win.isMaximizable()) {
       // describe() carries no active flag and there is no IPC for it, so the
       // active tab is identified the way the layout itself expresses it: the
@@ -1165,13 +1166,30 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
         maximized.chrome.width === maximized.contentWidth && maximized.contentWidth > 0,
         `chrome ${maximized.chrome.width} vs content ${maximized.contentWidth}`,
       );
+      // The page is letterboxed: snapped down to the 200 x 100 grid and centered
+      // in the space below the chrome. That is why the width is a multiple of the
+      // grid rather than equal to the window - see src/main/letterbox.js.
+      const GRID = { width: 200, height: 100 };
+      const framedIn = (m) => {
+        const pageHeight = Math.max(0, m.contentHeight - m.chrome.height);
+        const b = m.tabBounds;
+        return (
+          Boolean(b) &&
+          b.width > 0 &&
+          b.width % GRID.width === 0 &&
+          b.width <= m.contentWidth &&
+          b.height > 0 &&
+          b.height % GRID.height === 0 &&
+          b.height <= pageHeight &&
+          b.x === Math.floor((m.contentWidth - b.width) / 2) &&
+          b.y === m.chrome.height + Math.floor((pageHeight - b.height) / 2)
+        );
+      };
       check(
-        "maximizing resizes the page below the top bar",
-        Boolean(maximized.tabBounds) &&
-          maximized.tabBounds.width === maximized.contentWidth &&
-          maximized.tabBounds.height === Math.max(0, maximized.contentHeight - maximized.chrome.height),
+        "maximizing letterboxes the page below the top bar",
+        framedIn(maximized),
         maximized.tabBounds
-          ? `page ${maximized.tabBounds.width}x${maximized.tabBounds.height}, chrome height ${maximized.chrome.height}`
+          ? `page ${maximized.tabBounds.width}x${maximized.tabBounds.height} at ${maximized.tabBounds.x},${maximized.tabBounds.y}, content ${maximized.contentWidth}x${maximized.contentHeight}, chrome height ${maximized.chrome.height}`
           : "no active tab view",
       );
 

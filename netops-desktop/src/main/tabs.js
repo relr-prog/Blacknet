@@ -14,6 +14,7 @@ const { Ledger, registrable, hostOf } = require("./ledger");
 const { onionHost } = require("./onion");
 const { search } = require("./search");
 const { attach: attachClock } = require("./timezone");
+const { box: letterbox } = require("./letterbox");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -1077,12 +1078,26 @@ class TabManager {
     // runs; getContentSize() on a destroyed window throws.
     if (!this.window || this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
+    const pageHeight = Math.max(0, height - CHROME_HEIGHT);
+    // Letterbox the page to a fixed grid so its viewport size is not a
+    // near-unique fingerprint. The address bar keeps the full width; only the
+    // content below it is rounded down and centered. Off by one config flag.
+    const settings = this.config.letterbox;
+    const framed =
+      settings && settings.enabled !== false
+        ? letterbox(width, pageHeight, settings)
+        : { x: 0, y: 0, width, height: pageHeight };
     for (const id of this.order) {
       const tab = this.tabs.get(id);
       if (!tab) continue;
       tab.view.setBounds(
         id === this.activeId
-          ? { x: 0, y: CHROME_HEIGHT, width, height: Math.max(0, height - CHROME_HEIGHT) }
+          ? {
+              x: framed.x,
+              y: CHROME_HEIGHT + framed.y,
+              width: framed.width,
+              height: framed.height,
+            }
           : { x: 0, y: 0, width: 0, height: 0 },
       );
     }

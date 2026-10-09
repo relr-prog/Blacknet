@@ -46,6 +46,10 @@ const DEFAULTS = {
   blockTrackers: true,
   blocklist: [],
   resistFingerprinting: true,
+  // Letterbox the page to Tor's 200 x 100 grid: the content area is rounded down
+  // and centered, so two windows a few pixels apart report the same viewport and
+  // size stops being a fingerprint. The address bar keeps the full window width.
+  letterbox: { enabled: true, widthStep: 200, heightStep: 100 },
   disableWebRtc: true,
   blockNotifications: true,
   blockWebBeacons: true,
