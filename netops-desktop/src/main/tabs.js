@@ -669,6 +669,24 @@ class TabManager {
         event.preventDefault();
         this.focusChrome();
         this.#emit("netops:find-open", { tabId: tab.id });
+      } else if (mod && key === "t") {
+        // Chrome parity: Ctrl+T anywhere opens a fresh tab. The keyboard layer
+        // works in both directions - pages and the chrome frame answer the same
+        // shortcuts, so the operator never has to think about who holds focus.
+        event.preventDefault();
+        this.create({ active: true });
+      } else if (mod && key === "w") {
+        event.preventDefault();
+        this.close(this.activeId);
+      } else if (input.control && key === "tab") {
+        event.preventDefault();
+        this.cycleTab(input.shift ? -1 : 1);
+      } else if (mod && /^[1-9]$/.test(key)) {
+        // Ctrl+1..8 picks that tab in strip order; Ctrl+9 always goes to the
+        // last one. Ctrl+0 is left alone: it is zoom-reset, not a tab pick.
+        event.preventDefault();
+        const target = this.order[Number(key) - 1] ?? this.order[this.order.length - 1];
+        if (target !== undefined) this.activate(target);
       } else if (mod && (key === "=" || key === "+" || key === "add")) {
         event.preventDefault();
         this.zoom(tab.id, "in");
@@ -1308,6 +1326,16 @@ class TabManager {
     this.#layout();
     this.#broadcast();
     return this.list();
+  }
+
+  // The keyboard layer's tab switcher. Ctrl+Tab walks right, Ctrl+Shift+Tab walks
+  // left, and walking off either end wraps - the strip is a ring while cycling.
+  cycleTab(delta) {
+    if (this.order.length === 0) return null;
+    const current = Math.max(0, this.order.indexOf(this.activeId));
+    const at = (current + delta) % this.order.length;
+    const next = this.order[at < 0 ? at + this.order.length : at];
+    return this.activate(next).id;
   }
 
   close(id) {

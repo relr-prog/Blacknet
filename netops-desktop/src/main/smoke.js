@@ -1357,6 +1357,40 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       await call("netops:tabs:close", reorderB.id);
     }
 
+    // Keyboard layer: the chrome answers Ctrl+Shift+Tab as a ring move and
+    // Ctrl+W as "close the active tab" exactly like the page-side branch in
+    // tabs.js, so the shortcuts behave the same whichever half has the focus.
+    const kbA = await call("netops:tabs:create", {});
+    const kbB = await call("netops:tabs:create", { active: true });
+    try {
+      // kbB was created last, so Ctrl+Shift+Tab from it must land on kbA.
+      await chromeView.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, shiftKey: true }))",
+      );
+      await sleep(300);
+      const activeMoved = await chromeView.webContents.executeJavaScript(
+        "document.querySelector('#tabstrip .tab.active')?.dataset.id || ''",
+      );
+      check(
+        "Ctrl+Shift+Tab cycles to the previous tab",
+        activeMoved === String(kbA.id),
+        `active=${activeMoved} want=${kbA.id}`,
+      );
+      // Ctrl+W closes the tab that now has the focus.
+      await chromeView.webContents.executeJavaScript(
+        "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }))",
+      );
+      await sleep(300);
+      const afterClose = (await call("netops:tabs:list")).map((tab) => tab.id);
+      check(
+        "Ctrl+W closes the active tab",
+        !afterClose.includes(kbA.id),
+        `ids=${JSON.stringify(afterClose)}`,
+      );
+    } finally {
+      await call("netops:tabs:close", kbB.id);
+    }
+
     // The same refusal reached by following a link instead of typing it: the
     // request filter sees the navigation before Chromium builds it, so the tab
     // must end on the same explanation. And a refused name is not a tracker

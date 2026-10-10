@@ -670,7 +670,24 @@ window.addEventListener("keydown", (event) => {
     // delivered as netops:find-open; this branch covers the chrome's own focus.
     event.preventDefault();
     openFind();
-  } else if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+")) {
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "t") {
+    // The keyboard layer answers the same shortcuts as the page-side branch in
+    // tabs.js, so it never matters which half of the window holds the focus.
+    event.preventDefault();
+    run(() => window.netops.tabs.create({}));
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w") {
+    event.preventDefault();
+    run(() => window.netops.tabs.close(state.activeId));
+  } else if (event.ctrlKey && event.key === "Tab") {
+    event.preventDefault();
+    run(() => window.netops.tabs.cycle(event.shiftKey ? -1 : 1));
+  } else if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
+    // Ctrl+1..8 picks that tab in strip order; Ctrl+9 always goes to the last
+    // one. Ctrl+0 is left alone: it is zoom-reset, not a tab pick.
+    event.preventDefault();
+    const target = state.tabs[Number(event.key) - 1] || state.tabs[state.tabs.length - 1];
+    if (target) run(() => window.netops.tabs.activate(target.id));
+  } else if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+" || event.key === "add")) {
     // The same zoom shortcuts as the page branch in tabs.js, for when the
     // chrome itself has the keyboard.
     event.preventDefault();

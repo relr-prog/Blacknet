@@ -31,7 +31,7 @@ machine for; it never needed a second language runtime to do it.
 
 | Feature | State |
 | --- | --- |
-| Tabs, profiles, navigation, address bar | Working. Drag a tab sideways to reorder it (the strip previews the move, and the new order survives a restart); middle-click closes, `+` opens a fresh one |
+| Tabs, profiles, navigation, address bar | Working. Drag a tab sideways to reorder it (the strip previews the move, and the new order survives a restart); middle-click closes, `+` opens a fresh one. The Chrome keyboard layer is answered from both the page and the chrome: Ctrl+T new tab, Ctrl+W close, Ctrl+Tab / Ctrl+Shift+Tab cycle (wrapping), Ctrl+1..8 jump to that tab, Ctrl+9 to the last |
 | Search | Working. The shell's own meta-search, run in the main process: a query fans out to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub) and the merged, de-duplicated list is shown on a built-in results page. No third-party engine and no API key. It searches those named sources, not "the whole web" — indexing everything would mean scraping an engine, which is the dependency this removes |
 | Tracker blocking (56 rules) with a live per-tab count | Working |
 | Privacy grade (0-100) and host-level report, JSON export | Working, **not persisted** — it is cleared on exit |
@@ -137,8 +137,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (339)
-npm run smoke                  # real Electron window, headless, 126 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (343)
+npm run smoke                  # real Electron window, headless, 128 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

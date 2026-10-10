@@ -76,6 +76,11 @@ body {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+.tab:not(.active):hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
 /* Tab drag reorder. The strip moves the tab through the live DOM, so each
    sibling slides aside to make room; the lifted tab is the only one that
    scales. Selection is disabled while a drag is live so a sweep across the
