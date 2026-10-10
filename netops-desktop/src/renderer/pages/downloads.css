@@ -1,0 +1,145 @@
+/* Downloads page. The row list is the whole page; chrome.css supplies the tab
+   strip and every control, so only the list itself is laid out here. */
+
+html,
+body {
+  overflow: auto;
+  user-select: auto;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+#topbar strong {
+  font-size: 15px;
+}
+
+#count {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#topbar #clear-all {
+  margin-left: auto;
+}
+
+#list {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 12px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.download.active {
+  border-color: var(--line-strong);
+}
+
+.dl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dl-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.badge.completed {
+  color: var(--ok);
+}
+
+.badge.active {
+  color: var(--accent);
+}
+
+.badge.cancelled,
+.badge.interrupted {
+  color: var(--warn);
+}
+
+.dl-meta {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.track {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.dl-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+#empty {
+  margin: 60px auto;
+  max-width: 780px;
+  padding: 0 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+#status {
+  position: sticky;
+  bottom: 0;
+  display: block;
+  margin: 0 auto;
+  padding: 6px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}

@@ -392,6 +392,122 @@ body {
   background: var(--surface);
 }
 
+/* --- downloads tray ------------------------------------------------------ */
+/* Chrome keeps its download tray at the bottom of the window, over the page.
+   Here it is one more row the chrome reports a height for, so the page below
+   drops by exactly this much while anything is downloading - an active item is
+   always visible, and finished ones stay until dismissed. */
+#downloadsbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+#downloadsbar[hidden] {
+  display: none;
+}
+
+#downloads-manage {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#downloads-manage:hover {
+  background: var(--raised);
+}
+
+#downloads-list {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#downloads-list::-webkit-scrollbar {
+  display: none;
+}
+
+.dl-chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 240px;
+  height: 24px;
+  padding: 0 6px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.dl-chip.done {
+  cursor: pointer;
+}
+
+.dl-chip.done:hover {
+  border-color: var(--line-strong);
+}
+
+.dl-chip .dl-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-chip .dl-state {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.dl-chip .dl-state.active {
+  color: var(--accent);
+}
+
+.dl-chip .dl-state.failed {
+  color: var(--warn);
+}
+
+.dl-chip .dl-state.ok {
+  color: var(--ok);
+}
+
+.dl-chip button {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dl-chip button:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
 /* --- settings dialog ----------------------------------------------------- */
 /* Shares the panel's shape. Settings is wider because it carries labels and
    actions side by side. */

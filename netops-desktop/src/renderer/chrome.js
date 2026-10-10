@@ -18,6 +18,9 @@ const bookmarksbar = document.getElementById("bookmarksbar");
 const findbar = document.getElementById("findbar");
 const findInput = document.getElementById("find-input");
 const findCount = document.getElementById("find-count");
+const downloadsbar = document.getElementById("downloadsbar");
+const downloadsList = document.getElementById("downloads-list");
+const downloadsManage = document.getElementById("downloads-manage");
 
 const buttons = {
   back: document.getElementById("back"),
@@ -28,7 +31,7 @@ const buttons = {
   settings: document.getElementById("settings-btn"),
 };
 
-const state = { tabs: [], activeId: null, profile: undefined, bookmarks: [] };
+const state = { tabs: [], activeId: null, profile: undefined, bookmarks: [], downloads: [] };
 
 // --- helpers --------------------------------------------------------------
 function unwrap(result) {
@@ -247,6 +250,94 @@ function runFind({ forward = true, findNext = true } = {}) {
   );
 }
 
+// --- downloads tray --------------------------------------------------------
+// Rows the main process pushes at the end of every download change (a record
+// starts, ticks, or ends). Active rows are always shown; finished rows stay
+// until dismissed. Dismissing is chrome-local, so a hidden row never rushes
+// back mid-save.
+const snoozedDownloads = new Set();
+
+function renderDownloads() {
+  const active = state.downloads.filter((item) => item.state === "active");
+  const settled = state.downloads.filter(
+    (item) => item.state !== "active" && !snoozedDownloads.has(item.id),
+  );
+  // Oldest first, and active rows are the ones that must not be pushed out.
+  const shown = [...settled, ...active].slice(-6);
+  downloadsList.replaceChildren();
+  for (const item of shown) downloadsList.append(downloadChip(item));
+  downloadsbar.hidden = shown.length === 0;
+  reportChromeHeight();
+}
+
+function smallChipAction(label, title, onClick) {
+  const buttonElement = document.createElement("button");
+  buttonElement.type = "button";
+  buttonElement.textContent = label;
+  buttonElement.title = title;
+  buttonElement.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  return buttonElement;
+}
+
+function downloadChip(item) {
+  const chip = document.createElement("div");
+  chip.className = "dl-chip";
+
+  const file = document.createElement("span");
+  file.className = "dl-file";
+  file.textContent = item.filename;
+  file.title = item.savePath || item.filename;
+
+  const badge = document.createElement("span");
+  badge.className = `dl-state ${
+    item.state === "completed" ? "ok" : item.state === "cancelled" || item.state === "interrupted" ? "failed" : "active"
+  }`;
+  if (item.state === "active") {
+    const total = item.totalBytes;
+    const percent = total > 0 ? Math.floor((Math.min(item.receivedBytes, total) * 100) / total) : 0;
+    badge.textContent = `${percent}%`;
+  } else if (item.state === "completed") {
+    badge.textContent = "Done";
+  } else if (item.state === "cancelled") {
+    badge.textContent = "Cancelled";
+  } else {
+    badge.textContent = "Failed";
+  }
+
+  chip.append(file, badge);
+
+  if (item.state === "active") {
+    chip.append(
+      smallChipAction("✕", "Cancel download", () =>
+        run(() => window.netops.downloads.cancel(item.id), { silent: true }),
+      ),
+    );
+  } else {
+    chip.classList.add("done");
+    chip.title = "Click to open";
+    chip.addEventListener("click", () => {
+      if (item.state === "completed") run(() => window.netops.downloads.open(item.id), { silent: true });
+    });
+    if (item.state === "completed") {
+      chip.append(
+        smallChipAction("folder", "Show in folder", () =>
+          run(() => window.netops.downloads.show(item.id), { silent: true }),
+        ),
+      );
+    }
+    chip.append(
+      smallChipAction("✕", "Dismiss", () => {
+        snoozedDownloads.add(item.id);
+        renderDownloads();
+      }),
+    );
+  }
+  return chip;
+}
+
 // The page below this frame starts where the frame ends, so the frame has to say
 // how tall it is. It is the sum of the rows, which does not depend on the view's
 // own height - so reporting cannot feed back into itself.
@@ -256,7 +347,8 @@ function reportChromeHeight() {
     document.getElementById("tabrow").offsetHeight +
     document.getElementById("toolbar").offsetHeight +
     (bookmarksbar.hidden ? 0 : bookmarksbar.offsetHeight) +
-    (findbar.hidden ? 0 : findbar.offsetHeight);
+    (findbar.hidden ? 0 : findbar.offsetHeight) +
+    (downloadsbar.hidden ? 0 : downloadsbar.offsetHeight);
   if (!height || height === reportedHeight) return;
   reportedHeight = height;
   Promise.resolve(window.netops.chrome.setHeight(height)).catch(() => {});
@@ -330,8 +422,9 @@ window.netops.subscribe("netops:load-failed", ({ description }) => {
   setStatus(`load failed: ${description}`, true);
 });
 
-window.netops.subscribe("netops:download", ({ filename }) => {
-  setStatus(`download blocked: ${filename}`, true);
+window.netops.subscribe("netops:downloads", ({ downloads }) => {
+  state.downloads = downloads;
+  renderDownloads();
 });
 
 // --- toolbar --------------------------------------------------------------
@@ -509,17 +602,24 @@ window.addEventListener("keydown", (event) => {
       const result = unwrap(await window.netops.tabs.zoom(state.activeId, "out"));
       if (result) renderZoom(result.percent);
     });
-  } else if ((event.ctrlKey || event.metaKey) && event.key === "0") {
+  } else if (event.key === "0" && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     run(async () => {
       const result = unwrap(await window.netops.tabs.zoom(state.activeId, "reset"));
       if (result) renderZoom(result.percent);
     });
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    run(() => window.netops.tabs.internal("downloads"));
   } else if (!typing && event.key === "F6") {
     event.preventDefault();
     run(() => window.netops.tabs.create({}));
   }
 });
+
+downloadsManage.addEventListener("click", () =>
+  run(() => window.netops.tabs.internal("downloads")),
+);
 
 reportAudio().catch(() => {});
 render();

@@ -6,6 +6,7 @@
 // before Chromium is allowed to open a socket.
 
 const { WebContentsView, session } = require("electron");
+const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
@@ -16,6 +17,7 @@ const { search } = require("./search");
 const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
+const { sanitizeFilename } = require("./downloads");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -75,6 +77,8 @@ class TabManager {
     sessionFromPartition,
     focusChrome,
     zoom,
+    downloads,
+    downloadsPath,
   }) {
     this.window = win;
     this.native = native;
@@ -104,6 +108,15 @@ class TabManager {
     // stays at 100%. Kept as zoomStore, not zoom: a field named zoom would shadow
     // the zoom() method below.
     this.zoomStore = zoom || null;
+    // Injected by main.js: the downloads record store and the directory a
+    // recovered file is written to. Optional, like zoom, so the decision tests
+    // can run without the browser.
+    this.downloads = downloads || null;
+    this.downloadsPath = downloadsPath || null;
+    // record id -> live DownloadItem, so the tray can cancel something active.
+    this.activeDownloads = new Map();
+    // record id -> last integer percent emitted, to keep progress events quiet.
+    this.downloadPercent = new Map();
     // The height the chrome view above the page occupies. It is normally
     // CHROME_HEIGHT, but the chrome reports its own height so a row it shows
     // (the bookmarks bar) can move the page down instead of overlapping it.
@@ -665,6 +678,9 @@ class TabManager {
       } else if (mod && key === "0") {
         event.preventDefault();
         this.zoom(tab.id, "reset");
+      } else if (mod && key === "j") {
+        event.preventDefault();
+        this.openInternalPage("downloads");
       } else if (key === "escape") {
         this.#emit("netops:find-close", { tabId: tab.id });
       }
@@ -740,15 +756,105 @@ class TabManager {
     });
     wc.on("unresponsive", () => this.log(`tab ${tab.id} is unresponsive`));
     wc.on("responsive", () => this.log(`tab ${tab.id} recovered`));
-    // Downloads are a classic exfiltration path: hand them to the shell, which
-    // asks the operator first. One listener per partition, not per tab.
+    // Downloads are a classic exfiltration path, so the shell owns the whole
+    // flow: it picks the filename, writes to the operator's download directory
+    // and keeps a record of what happened. The operator can cancel from the
+    // tray at any point. One listener per partition, not per tab.
     if (!this.downloadGuards.has(tab.session)) {
       this.downloadGuards.add(tab.session);
-      tab.session.on("will-download", (_session, item) => {
-        this.#emit("netops:download", { filename: item.getFilename() });
-        item.cancel();
-      });
+      tab.session.on("will-download", (_event, item) => this.#onWillDownload(item));
     }
+  }
+
+  // --- downloads -----------------------------------------------------------
+
+  #onWillDownload(item) {
+    if (!this.downloads || !this.downloadsPath) {
+      item.cancel();
+      return;
+    }
+    // The store returns a clean single-part filename; the session's own idea is
+    // only ever used as its source, never trusted onto the path directly.
+    const filename = sanitizeFilename(item.getFilename());
+    const savePath = this.#uniqueTarget(this.downloadsPath, filename);
+    item.setSavePath(savePath);
+    const record = this.downloads.add({
+      filename,
+      url: item.getURL(),
+      savePath,
+      mimeType: item.getMimeType(),
+      totalBytes: item.getTotalBytes(),
+    });
+    this.log(`download ${record.id} ${filename} (${record.totalBytes} bytes)`);
+    this.activeDownloads.set(record.id, item);
+    this.downloadPercent.set(record.id, 0);
+    this.#emitDownloads();
+
+    item.on("updated", () => {
+      if (record.state !== "active") return;
+      const received = Math.max(0, item.getReceivedBytes());
+      const total = Math.max(0, item.getTotalBytes());
+      const percent = total > 0 ? Math.floor((received * 100) / total) : 0;
+      // Progress can tick many times a second; the tray only needs to move when
+      // the whole percentage changes.
+      if (percent === this.downloadPercent.get(record.id) && received < total) return;
+      this.downloadPercent.set(record.id, percent);
+      this.downloads.update(record.id, { receivedBytes: received });
+      this.#emitDownloads();
+    });
+
+    item.on("done", (_event, state) => {
+      this.activeDownloads.delete(record.id);
+      this.downloadPercent.delete(record.id);
+      const ended = state === "completed" ? "completed" : state === "interrupted" ? "interrupted" : "cancelled";
+      this.downloads.update(record.id, {
+        state: ended,
+        receivedBytes: Math.max(0, item.getReceivedBytes()),
+        endedAt: Date.now(),
+      });
+      this.log(`download ${record.id} ${ended}`);
+      this.#emitDownloads();
+    });
+  }
+
+  // A name that already exists gets a number before the extension; the store's
+  // cap and the display both get one file per attempt.
+  #uniqueTarget(dir, filename) {
+    let candidate = path.join(dir, filename);
+    let attempt = 1;
+    while (fs.existsSync(candidate)) {
+      const dot = filename.lastIndexOf(".");
+      const base = dot > 0 ? filename.slice(0, dot) : filename;
+      const ext = dot > 0 ? filename.slice(dot) : "";
+      candidate = path.join(dir, `${base} (${attempt})${ext}`);
+      attempt += 1;
+    }
+    return candidate;
+  }
+
+  cancelDownload(id) {
+    const item = this.activeDownloads.get(id);
+    const record = this.downloads ? this.downloads.get(id) : null;
+    if (item) {
+      item.cancel(); // done fires with "cancelled" and records the state
+      return true;
+    }
+    if (record && record.state === "active" && this.downloads) {
+      this.downloads.update(id, { state: "cancelled", endedAt: Date.now() });
+      this.#emitDownloads();
+    }
+    return Boolean(item);
+  }
+
+  // Re-broadcast the list after an action changed it (clear, remove, cancel of
+  // a row with no live item), so the tray and the page stay in step.
+  onDownloadsChanged() {
+    this.#emitDownloads();
+  }
+
+  #emitDownloads() {
+    if (!this.downloads) return;
+    this.#emit("netops:downloads", { downloads: this.downloads.all() });
   }
 
   // A crashed renderer must not take the window with it: keep the tab, replace

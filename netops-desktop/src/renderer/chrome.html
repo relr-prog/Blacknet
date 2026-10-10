@@ -80,6 +80,15 @@
       <button type="button" id="find-close" title="Close find bar (Esc)" aria-label="Close find bar">&#10005;</button>
     </div>
 
+    <!-- Downloads: appears while something is being saved and stays until each
+         finished row is dismissed, the way Chrome's tray does. It is a row this
+         chrome reports a height for, so the page below drops by exactly this
+         much while it is open. -->
+    <div id="downloadsbar" role="region" aria-label="Downloads" hidden>
+      <button type="button" id="downloads-manage" title="Open the downloads page (Ctrl+J)">Downloads</button>
+      <div id="downloads-list"></div>
+    </div>
+
     <!-- Settings and Privacy used to be dialogs here. They now open as a page of
          the shell in an ordinary tab (renderer/pages/settings.html), so nothing
          floats over the browser any more. -->

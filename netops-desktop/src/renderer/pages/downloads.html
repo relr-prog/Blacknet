@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Local only, like the other shell pages: no remote anything. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;"
+    />
+    <title>Downloads - BlackNet</title>
+    <!-- Controls inherit chrome.css; downloads.css lays the page out. -->
+    <link rel="stylesheet" href="../chrome.css" />
+    <link rel="stylesheet" href="downloads.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <strong>Downloads</strong>
+      <span id="count"></span>
+      <button type="button" id="clear-all" hidden>Clear all</button>
+    </header>
+    <main id="list"></main>
+    <p id="empty" hidden>No downloads yet. Files land here as they finish.</p>
+    <span id="status" aria-live="polite"></span>
+    <script src="downloads.js"></script>
+  </body>
+</html>

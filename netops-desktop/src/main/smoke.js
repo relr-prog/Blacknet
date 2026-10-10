@@ -1232,6 +1232,88 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       await new Promise((resolve) => zoomServer.close(resolve));
     }
 
+    // Downloads. A navigated attachment is saved automatically to the smoke run's
+    // own scratch folder (main.js points it there under --smoke, so the real
+    // Downloads directory is never touched). A short file completes; a slow
+    // stream is cancelled mid-way; clearing forgets the records but keeps the
+    // files, the way clearing a browser's download history does.
+    const dlServer = http.createServer((req, res) => {
+      if (req.url === "/file.bin") {
+        res.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-disposition": 'attachment; filename="smoke-airtight.bin"',
+        });
+        res.end(Buffer.alloc(64 * 1024, 0xab));
+      } else if (req.url === "/slow.bin") {
+        res.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-disposition": 'attachment; filename="smoke-slow.bin"',
+        });
+        const drip = setInterval(() => res.write(Buffer.alloc(4096, 0xcd)), 80);
+        req.on("close", () => clearInterval(drip));
+      } else {
+        res.writeHead(404);
+        res.end("missing");
+      }
+    });
+    await new Promise((resolve) => dlServer.listen(0, "127.0.0.1", resolve));
+    const dlOrigin = `http://127.0.0.1:${dlServer.address().port}`;
+    let savedPath = "";
+    try {
+      const dlTab = await call("netops:tabs:create", { active: true });
+
+      await call("netops:tabs:navigate", dlTab.id, `${dlOrigin}/file.bin`);
+      await sleep(1500);
+      const items = await call("netops:downloads:list");
+      const fast = items.find((item) => item.filename === "smoke-airtight.bin");
+      savedPath = fast && fast.savePath ? fast.savePath : "";
+      check(
+        "a navigated download is saved automatically",
+        Boolean(fast) && fast.state === "completed" && fs.existsSync(savedPath),
+        JSON.stringify(fast),
+      );
+
+      const trayState = await chromeView.webContents.executeJavaScript(`(() => ({
+        hidden: document.getElementById('downloadsbar').hidden,
+        chips: [...document.querySelectorAll('#downloads-list .dl-file')].map((n) => n.textContent),
+      }))()`);
+      check(
+        "the chrome tray shows the finished download",
+        !trayState.hidden && trayState.chips.includes("smoke-airtight.bin"),
+        JSON.stringify(trayState),
+      );
+
+      await call("netops:tabs:navigate", dlTab.id, `${dlOrigin}/slow.bin`);
+      await sleep(400);
+      const slow = await call("netops:downloads:list");
+      const slowItem = slow.find((item) => item.filename === "smoke-slow.bin");
+      check(
+        "a slow download is tracked while saving",
+        Boolean(slowItem) && slowItem.state === "active",
+        JSON.stringify(slowItem),
+      );
+      if (slowItem) await call("netops:downloads:cancel", slowItem.id);
+      await sleep(600);
+      const afterCancel = await call("netops:downloads:list");
+      const cancelledItem = afterCancel.find((item) => item.filename === "smoke-slow.bin");
+      check(
+        "cancelling a download records it as cancelled",
+        Boolean(cancelledItem) && cancelledItem.state === "cancelled",
+        JSON.stringify(cancelledItem),
+      );
+
+      const cleared = await call("netops:downloads:clear");
+      check(
+        "clearing forgets records but keeps the files",
+        cleared.length === 0 && fs.existsSync(savedPath),
+        JSON.stringify(cleared),
+      );
+
+      await call("netops:tabs:close", dlTab.id);
+    } finally {
+      await new Promise((resolve) => dlServer.close(resolve));
+    }
+
     // The same refusal reached by following a link instead of typing it: the
     // request filter sees the navigation before Chromium builds it, so the tab
     // must end on the same explanation. And a refused name is not a tracker

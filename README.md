@@ -50,6 +50,7 @@ machine for; it never needed a second language runtime to do it.
 | Bookmarks (star + bar) | Working. The star in the address bar bookmarks the active `http(s)` page and fills a Chrome-style bookmarks bar below the toolbar; the bar reports its own height so the page below is pushed down instead of overlapped. Right-click a bar item to remove it. Stored in `bookmarks.json`, kept separate from the restorable session |
 | Find in page | Working. Ctrl+F opens a find bar below the toolbar, focuses its box and counts matches as they arrive (`n/m`, or "no matches"); Enter and the arrows step forward and back, Escape closes it. The bar reports its own height so the page moves down, and the highlight is cleared when the tab is left. Caught in the main process while a page holds the keyboard |
 | Zoom (per site) | Working. Ctrl `+`/`-`/`0` steps the active site through Chromium's zoom ladder and resets it; every tab on the same origin moves together and the size is remembered across restarts. A chip in the address bar shows the percentage when a site is not at 100% and resets it on click. Stored per origin in `zoom.json`; local pages with no origin stay at 100% |
+| Downloads | Working. A navigated attachment is saved automatically to the system Downloads folder with a safe name (path separators, drive letters and `..` stripped, duplicates get ` (1)`), and every save survival is recorded in `downloads.json` (capped at 200 records). The tray shows active rows with a live percentage while a download runs and keeps finished rows until dismissed (click one to open it); Ctrl+J or the "Downloads" button opens the full list page. Cancel stops a save mid-way and drops the partial file. Clearing the list forgets records, never files |
 | Android shell | Working. The verdict chain is a statement-for-statement port (onion first, then URL, host and tracker rules), refusal page wording identical, tracker blocks counted per tab; 45 JVM tests |
 | History (Android) | Working. Local SQLite, newest first, one row per URL, capped at 2000: tap to open, long-press to delete, Clear empties it. Refused targets and tracker URLs are never recorded |
 
@@ -136,8 +137,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (327)
-npm run smoke                  # real Electron window, headless, 119 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (334)
+npm run smoke                  # real Electron window, headless, 124 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator

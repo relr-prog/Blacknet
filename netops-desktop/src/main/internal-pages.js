@@ -15,6 +15,7 @@ const RENDERER_DIR = path.join(__dirname, "..", "renderer");
 
 const INTERNAL_PAGES = {
   settings: { file: "pages/settings.html", title: "Settings & Privacy" },
+  downloads: { file: "pages/downloads.html", title: "Downloads" },
 };
 
 // Returns { file, title } for a known name, or null for anything else.

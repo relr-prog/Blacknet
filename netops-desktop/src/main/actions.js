@@ -54,7 +54,7 @@ async function ipRotatorStatus(settings, ipRotator) {
   return { ...settings.all(), live: Boolean(live), pool: live };
 }
 
-function createActions({ core, tabs, clipboard, settings, identity, passwords, ipRotator, sessionStore, bookmarks }) {
+function createActions({ core, tabs, clipboard, settings, identity, passwords, ipRotator, sessionStore, bookmarks, downloads, shell }) {
   const actions = {
     // --- tabs -------------------------------------------------------------
     "netops:tabs:list": () => tabs.list(),
@@ -131,6 +131,39 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
     actions["netops:bookmarks:list"] = () => bookmarks.all();
     actions["netops:bookmarks:toggle"] = (payload) => bookmarks.toggle(payload || {});
     actions["netops:bookmarks:remove"] = (url) => bookmarks.remove(url);
+  }
+
+  // Downloads: the record list, plus the two actions that touch the filesystem
+  // (open the file, reveal it in its folder). Clear and remove rewrite the
+  // store and ask the tab manager to re-broadcast, so the page and the tray
+  // never read a stale copy.
+  if (downloads) {
+    actions["netops:downloads:list"] = () => downloads.all();
+    actions["netops:downloads:clear"] = () => {
+      downloads.clear();
+      if (tabs && typeof tabs.onDownloadsChanged === "function") tabs.onDownloadsChanged();
+      return downloads.all();
+    };
+    actions["netops:downloads:remove"] = (id) => {
+      downloads.remove(Number(id));
+      if (tabs && typeof tabs.onDownloadsChanged === "function") tabs.onDownloadsChanged();
+      return downloads.all();
+    };
+    actions["netops:downloads:cancel"] = (id) => {
+      if (tabs && typeof tabs.cancelDownload === "function") tabs.cancelDownload(Number(id));
+      return downloads.all();
+    };
+    actions["netops:downloads:open"] = async (id) => {
+      const item = downloads.get(Number(id));
+      if (!item || !item.savePath) throw new Error("no file for this download");
+      return shell.openPath(item.savePath);
+    };
+    actions["netops:downloads:show"] = (id) => {
+      const item = downloads.get(Number(id));
+      if (!item || !item.savePath) throw new Error("no file for this download");
+      shell.showItemInFolder(item.savePath);
+      return { shown: true };
+    };
   }
 
   // One local identity, created on first run, with no password behind it. There is

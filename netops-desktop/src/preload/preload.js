@@ -12,7 +12,7 @@ const EVENTS = [
   "netops:blocked",
   "netops:load-failed",
   "netops:crashed",
-  "netops:download",
+  "netops:downloads",
   "netops:password-offer",
   "netops:settings",
   "netops:find",
@@ -63,6 +63,18 @@ contextBridge.exposeInMainWorld("netops", {
     list: () => ipcRenderer.invoke("netops:bookmarks:list"),
     toggle: (payload) => ipcRenderer.invoke("netops:bookmarks:toggle", payload),
     remove: (url) => ipcRenderer.invoke("netops:bookmarks:remove", url),
+  },
+
+  // --- downloads ----------------------------------------------------------
+  // Records only: the files themselves live in the download directory. clear()
+  // forgets the list, not the files; deleting a file is the operator's decision.
+  downloads: {
+    list: () => ipcRenderer.invoke("netops:downloads:list"),
+    clear: () => ipcRenderer.invoke("netops:downloads:clear"),
+    remove: (id) => ipcRenderer.invoke("netops:downloads:remove", id),
+    cancel: (id) => ipcRenderer.invoke("netops:downloads:cancel", id),
+    open: (id) => ipcRenderer.invoke("netops:downloads:open", id),
+    show: (id) => ipcRenderer.invoke("netops:downloads:show", id),
   },
 
   // --- chrome frame -------------------------------------------------------

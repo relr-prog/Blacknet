@@ -18,6 +18,7 @@ const { TabManager, CHROME_HEIGHT } = require("./tabs");
 const { Session } = require("./session");
 const { Bookmarks } = require("./bookmarks");
 const { Zoom } = require("./zoom");
+const { Downloads } = require("./downloads");
 const { Settings } = require("./settings");
 const { Identity } = require("./identity");
 const { Reauth } = require("./reauth");
@@ -64,6 +65,7 @@ let selfCheck = null;
 let sessionStore = null;
 let bookmarks = null;
 let zoomStore = null;
+let downloads = null;
 // The chrome view's height. Normally CHROME_HEIGHT, but the renderer reports its
 // own height when a row it owns (the bookmarks bar) appears or disappears, so the
 // page below it is always offset by the truth rather than by a guess.
@@ -227,6 +229,20 @@ async function createWindow() {
   // Per-site zoom levels, read on launch and applied as each tab commits. Built
   // before the tab manager so a restored tab opens at the remembered size.
   zoomStore = new Zoom({ userDataPath: userData, log });
+  // Downloads records, and the directory recovered files are written to. The
+  // directory can be pointed elsewhere by env so the smoke test never touches
+  // the operator's real Downloads folder.
+  downloads = new Downloads({ userDataPath: userData, log });
+  // Smoke runs must not write into the operator's real Downloads folder: the
+  // run owns a scratch directory instead, cleaned before the first save.
+  let downloadsPath = process.env.BLACKNET_DOWNLOADS_DIR || app.getPath("downloads");
+  if (process.argv.includes("--smoke")) {
+    downloadsPath = path.join(app.getPath("temp"), "blacknet-downloads-smoke");
+    fs.mkdirSync(downloadsPath, { recursive: true });
+    for (const entry of fs.readdirSync(downloadsPath)) {
+      fs.rmSync(path.join(downloadsPath, entry), { recursive: true, force: true });
+    }
+  }
   tabs = new TabManager({
     window: win,
     native: core,
@@ -238,6 +254,8 @@ async function createWindow() {
     // Per-site zoom: Ctrl +/-/0 on a page is remembered for that origin, so a
     // site reopens at the size the operator left it.
     zoom: zoomStore,
+    downloads,
+    downloadsPath,
     // A Ctrl+F pressed while a page has the keyboard has to put the keyboard
     // into the chrome's find bar, which means focusing the chrome view itself.
     focusChrome: () => {
@@ -411,6 +429,8 @@ clipboard: clipboardBridge,
       ipRotator,
       sessionStore,
       bookmarks,
+      downloads,
+      shell,
     }),
     "netops:open-external": async (url) => {
       // Only ever hand http(s) to the OS browser; never file: or a custom
