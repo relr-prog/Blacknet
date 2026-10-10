@@ -2,11 +2,17 @@
 
 // BlackNet's own search: a small meta-search that runs in the main process.
 //
-// There is no third-party engine behind the address bar and no API key. A query
-// fans out to a fixed set of public, keyless, documented JSON APIs; each answer
-// is parsed into the same result shape; the merged list is de-duplicated and
-// ranked here; and only the final list ever reaches the page. The page itself
-// gets no bridge - it is handed the results as data.
+// By default there is no third-party engine behind the address bar and no API
+// key: a query fans out to a fixed set of public, keyless, documented JSON
+// APIs; each answer is parsed into the same result shape; the merged list is
+// de-duplicated and ranked here; and only the final list ever reaches the page.
+// The page itself gets no bridge - it is handed the results as data.
+//
+// An operator may opt into a plain web engine (DuckDuckGo, Bing, Google) from
+// Settings; that just makes a query a real navigation to that engine's results
+// URL - ENGINES below - instead of this page. The default keeps queries on this
+// machine, and every engine URL is built only from a fixed host and the encoded
+// query, so nothing from a page can smuggle an argument into it.
 //
 // Coverage is honest: this searches the sources listed below, not "the whole
 // web". Indexing the whole web would mean scraping a commercial engine, which is
@@ -329,9 +335,38 @@ async function search(query, options = {}) {
   return summary;
 }
 
+// Engines a query can be routed to. "blacknet" is the shell's own meta-search
+// above; the others are ordinary web engines an operator may pick in Settings.
+// Each template is an https URL of a fixed host with %s for the encoded query,
+// so the only input to the URL is the query itself.
+const ENGINES = {
+  blacknet: null,
+  duckduckgo: "https://duckduckgo.com/?q=%s",
+  bing: "https://www.bing.com/search?q=%s",
+  google: "https://www.google.com/search?q=%s",
+};
+
+// Queries stay on this machine until the operator says otherwise.
+const DEFAULT_ENGINE = "blacknet";
+const ENGINE_IDS = Object.keys(ENGINES);
+
+// The results URL for an engine, or null for "blacknet" (the shell's own search).
+// Unknown engines behave like blacknet rather than inventing a URL to visit: a
+// bad value from a hand-edited settings file must not become somewhere to go.
+function searchEngineUrl(engine, query) {
+  const template = Object.hasOwn(ENGINES, engine) ? ENGINES[engine] : null;
+  if (!template) return null;
+  const text = String(query == null ? "" : query);
+  return template.replace("%s", encodeURIComponent(text));
+}
+
 module.exports = {
   SOURCES,
   SOURCE_IDS,
+  ENGINES,
+  DEFAULT_ENGINE,
+  ENGINE_IDS,
+  searchEngineUrl,
   search,
   merge,
   safe_url,

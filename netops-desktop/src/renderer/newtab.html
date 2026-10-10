@@ -4,47 +4,48 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <!-- Local page, no network, no script: a strict CSP keeps it that way. -->
+    <!-- Local page, no network, no script: a strict CSP keeps it that way. The
+         search box is a plain form; submitting it is a GET to the shell's own
+         results page, which the shell answers with the selected engine. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'self'; img-src 'self' data:;"
     />
-    <title>New tab</title>
+    <title>BlackNet</title>
     <link rel="icon" href="../../assets/icons/blacknet-32.png" type="image/png" />
     <link rel="stylesheet" href="newtab.css" />
   </head>
   <body>
-    <main>
-      <img class="logo" src="../../assets/icons/blacknet-128.png" alt="" width="96" height="96" />
+    <main class="home">
+      <img class="logo" src="../../assets/icons/blacknet-128.png" alt="" width="72" height="72" />
       <h1>BlackNet</h1>
-      <p class="lead">
-        A private browser window. Pages load behind a C++ policy that refuses
-        private addresses, dangerous schemes and known trackers.
-      </p>
 
-      <section>
-        <h2>This tab</h2>
-        <dl>
-          <dt>Profile</dt>
-          <dd id="profile">default</dd>
-          <dt>Upstream</dt>
-          <dd id="proxy">direct connection</dd>
-          <dt>Blocked so far</dt>
-          <dd id="blocked">0</dd>
-        </dl>
-      </section>
-
-      <section>
-        <h2>Local</h2>
-        <ul>
-          <li><code>127.0.0.1:8787</code> &mdash; BlackNet control plane</li>
-          <li><code>127.0.0.1:8000</code> &mdash; API docs, when running</li>
-        </ul>
-      </section>
+      <form id="search" action="search.html" method="get">
+        <input
+          type="search"
+          name="q"
+          placeholder="Search privately, or type an address"
+          autocomplete="off"
+          spellcheck="false"
+          autofocus
+          aria-label="Search the web"
+        />
+        <div class="actions">
+          <button type="submit">Search</button>
+        </div>
+      </form>
 
       <p class="hint">
-        Type in the address bar above, or press <kbd>Ctrl</kbd>+<kbd>L</kbd>.
+        Queries stay on this machine by default. Ctrl+L searches from anywhere;
+        Ctrl+T opens a tab.
       </p>
     </main>
+
+    <footer>
+      <p>
+        A C++ policy guards every request: no trackers, no private addresses,
+        no leaky headers. Nothing here ever touches the network by itself.
+      </p>
+    </footer>
   </body>
 </html>

@@ -13,7 +13,7 @@ const { pathToFileURL } = require("url");
 const { internalPage, RENDERER_DIR } = require("./internal-pages");
 const { Ledger, registrable, hostOf } = require("./ledger");
 const { onionHost } = require("./onion");
-const { search } = require("./search");
+const { search, searchEngineUrl, DEFAULT_ENGINE } = require("./search");
 const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
@@ -79,6 +79,7 @@ class TabManager {
     zoom,
     downloads,
     downloadsPath,
+    settings,
   }) {
     this.window = win;
     this.native = native;
@@ -113,6 +114,10 @@ class TabManager {
     // can run without the browser.
     this.downloads = downloads || null;
     this.downloadsPath = downloadsPath || null;
+    // Injected by main.js: the mutable settings store. Only the current search
+    // engine is read (at query time, so a change applies to the next search).
+    // Optional so the plain-node test process can build a TabManager without it.
+    this.settings = settings || null;
     // record id -> live DownloadItem, so the tray can cancel something active.
     this.activeDownloads = new Map();
     // record id -> last integer percent emitted, to keep progress events quiet.
@@ -706,6 +711,31 @@ class TabManager {
     // Zoom is applied as the navigation starts, before the document commits, so a
     // site with a remembered size does not paint once at 100% and then jump. The
     // event carries the target URL, which is the origin to key on.
+    // The new-tab page has no script, so its search box is a plain GET form that
+    // submits a real load of the results page (?q=). That load is intercepted
+    // here and turned into a search, so the address bar, this form and the
+    // in-page box all hand a query to the same routing.
+    wc.on("will-navigate", (event, url) => {
+      if (!this.#isSearchPage(url)) return;
+      event.preventDefault();
+      const text = this.#searchQueryFromUrl(url);
+      if (!text) return;
+      const engine = this.#enginePref();
+      const engineUrl = engine === DEFAULT_ENGINE ? null : searchEngineUrl(engine, text);
+      if (engineUrl) {
+        tab.searchQuery = null;
+        tab.blockedUrl = null;
+        tab.pendingUrl = engineUrl;
+        tab.title = text || "Search";
+        this.#broadcast();
+        wc.loadURL(engineUrl).catch((error) => {
+          if (!this.tabs.has(tab.id)) return;
+          this.log(`tab ${tab.id} engine search failed: ${error.message}`);
+        });
+        return;
+      }
+      this.#startSearch(tab, text);
+    });
     wc.on("did-start-navigation", (_event, url, _inPlace, isMainFrame) => {
       if (isMainFrame) this.#applyZoom(tab, url);
     });
@@ -1080,13 +1110,29 @@ class TabManager {
     return this.describe(tab);
   }
 
-  // --- the shell's own search ----------------------------------------------
+  // --- search --------------------------------------------------------------
   //
-  // A query never leaves the machine for a third-party engine. It goes to the
-  // fixed set of public APIs in search.js, and the merged list is shown on the
-  // shell's own page in this same tab. The page is a plain file with no bridge;
-  // the results reach it as data through executeJavaScript, so nothing a source
-  // returns can turn into a capability.
+  // By default a query never leaves the machine for a third-party engine. It
+  // goes to the fixed set of public APIs in search.js, and the merged list is
+  // shown on the shell's own page in this same tab. The page is a plain file
+  // with no bridge; the results reach it as data through executeJavaScript, so
+  // nothing a source returns can turn into a capability. An operator who opted
+  // into an external engine in Settings (or a config that names one) gets a real
+  // navigation to that engine's results URL instead - one query, one tab, and the
+  // same URL policy and tracker blocklist apply to the results page as to any
+  // other page.
+
+  // The engine a query is routed to. The settings file is the runtime value;
+  // the config (search.engine) is the fallback; blacknet - the shell's own
+  // search - is the last resort, so a bad value never invents a URL to visit.
+  #enginePref() {
+    if (this.settings && typeof this.settings.get === "function") {
+      const fromSettings = this.settings.get("searchEngine");
+      if (fromSettings) return fromSettings;
+    }
+    const cfg = (this.config && this.config.search) || {};
+    return cfg.engine || DEFAULT_ENGINE;
+  }
 
   #searchEnabled() {
     const cfg = this.config.search;
@@ -1110,12 +1156,16 @@ class TabManager {
       && (url === SEARCH_PAGE_URL || url.startsWith(`${SEARCH_PAGE_URL}?`));
   }
 
-  // The in-page search box submits by writing "#q=" onto this page's own address,
-  // which is a same-document navigation: no reload, no bridge, and the shell
-  // just reads the query back out of the URL and searches again.
+  // The results page's own search box submits by writing "#q=" onto this page's
+  // own address - a same-document navigation - while the new-tab page's form
+  // submits "?q=" as a real load of the same file; both are recognised here, so
+  // either spelling hands the query back to the shell.
   #searchQueryFromUrl(url) {
-    const hash = String(url || "").split("#")[1] || "";
-    const value = new URLSearchParams(hash).get("q");
+    const text = String(url || "");
+    const tail = text.startsWith(SEARCH_PAGE_URL)
+      ? text.slice(SEARCH_PAGE_URL.length).replace(/^[?#]/, "")
+      : text.split(/[?#]/).pop() || "";
+    const value = new URLSearchParams(tail).get("q");
     return value ? value.trim() : "";
   }
 
@@ -1124,6 +1174,26 @@ class TabManager {
     const text = String(query == null ? "" : query).trim();
     const wc = tab.view.webContents;
     if (wc.isDestroyed()) return this.describe(tab);
+
+    // An external engine turns the query into a real navigation instead of the
+    // shell's own page. The query is the address only until the results commit;
+    // the commit of a distant page clears searchQuery the way any other
+    // navigation does. The URL comes from searchEngineUrl, which builds it only
+    // from the fixed engine host and the encoded query.
+    const engine = this.#enginePref();
+    const engineUrl = engine === DEFAULT_ENGINE ? null : searchEngineUrl(engine, text);
+    if (engineUrl) {
+      tab.searchQuery = text;
+      tab.blockedUrl = null;
+      tab.pendingUrl = engineUrl;
+      tab.title = text || "Search";
+      this.#broadcast();
+      wc.loadURL(engineUrl).catch((error) => {
+        if (!this.tabs.has(tab.id)) return;
+        this.log(`tab ${tab.id} engine search failed: ${error.message}`);
+      });
+      return this.describe(tab);
+    }
 
     // The query is what the address bar shows and what this tab is "on"; a
     // search is not recorded in the session file, because a saved session that

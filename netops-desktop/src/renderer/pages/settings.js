@@ -143,6 +143,31 @@ async function renderAppearance() {
   );
   settingsBody.append(row("Theme", scheme.label, "Applies to the toolbar, tabs and pages."));
 
+  const engine = labelled("Search engine", "select", { id: "set-search-engine" });
+  const engines = [
+    ["blacknet", "BlackNet (stays on this machine)"],
+    ["duckduckgo", "DuckDuckGo"],
+    ["bing", "Bing"],
+    ["google", "Google"],
+  ];
+  for (const [value, label] of engines) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    engine.input.append(option);
+  }
+  engine.input.value = values.searchEngine;
+  engine.input.addEventListener("change", () =>
+    run(() => writeSettings({ searchEngine: engine.input.value })),
+  );
+  settingsBody.append(
+    row(
+      "Search engine",
+      engine.label,
+      "Answers address-bar and new-tab searches. BlackNet keeps them off the web.",
+    ),
+  );
+
   const background = labelled("Browser background", "input", {
     id: "set-background",
     type: "color",

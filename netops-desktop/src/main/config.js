@@ -16,12 +16,16 @@ const DEFAULTS = {
   allowDataUrls: false,
   newTabUrl: "about:blank",
   // The shell's own meta-search, run in the main process. There is no
-  // third-party engine behind the address bar and no API key: a query goes to
-  // this fixed set of public JSON APIs and the merged list is shown on the
-  // shell's own page. Set enabled to false to make the address bar accept
-  // addresses only again.
+  // third-party engine behind the address bar by default and no API key: a
+  // query goes to this fixed set of public JSON APIs and the merged list is
+  // shown on the shell's own page. Set enabled to false to make the address bar
+  // accept addresses only again. engine names the answer to a query; the
+  // runtime value lives in the settings file (Settings > Search engine) and
+  // falls back to this one, then to "blacknet". It may name one of the ENGINES
+  // in search.js: an external engine routes the query to its results URL.
   search: {
     enabled: true,
+    engine: "blacknet",
     sources: [...SOURCE_IDS],
     limit: 10,
     perSource: 8,

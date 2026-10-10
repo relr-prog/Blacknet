@@ -43,104 +43,99 @@
 
 body {
   display: grid;
-  place-items: center;
+  grid-template-rows: 1fr auto;
   min-height: 100vh;
   margin: 0;
-  padding: 24px 32px;
+  padding: 0;
   color: var(--text);
   background: var(--bg);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-main {
-  width: min(38rem, 100%);
+.home {
+  align-self: center;
+  justify-self: stretch;
+  width: min(38rem, calc(100% - 3rem));
+  margin: 0 auto;
+  text-align: center;
 }
 
 .logo {
   display: block;
   width: 72px;
   height: 72px;
-  margin: 0 auto 0.75rem;
+  margin: 0 auto 0.5rem;
   -webkit-user-drag: none;
   user-select: none;
 }
 
 h1 {
-  margin: 0 0 0.35rem;
-  font-size: 1.6rem;
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
   text-align: center;
 }
 
-.lead {
-  margin: 0 auto 1.5rem;
-  max-width: 32rem;
-  text-align: center;
-  color: var(--muted);
-  line-height: 1.55;
+#search {
+  margin: 0 auto;
 }
 
-section {
-  margin-bottom: 1.25rem;
-}
-
-h2 {
-  margin: 0 0 0.5rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.35rem 1rem;
-  margin: 0;
-  padding: 0.85rem 1rem;
+#search input[type="search"] {
+  width: 100%;
+  padding: 0.9rem 1.25rem;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-}
-
-dt {
-  color: var(--muted);
-}
-
-dd {
-  margin: 0;
-  color: var(--text); /* eksplisit, tidak lagi warisan yang bisa salah pasangan */
-  font-family: ui-monospace, "Cascadia Mono", monospace;
-}
-
-ul {
-  margin: 0;
-  padding: 0.85rem 1rem 0.85rem 2.2rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--muted);
-}
-
-li + li {
-  margin-top: 0.3rem;
-}
-
-code,
-kbd {
-  padding: 0.05rem 0.3rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 999px;
   background: var(--raised);
   color: var(--text);
-  font-family: ui-monospace, "Cascadia Mono", monospace;
-  font-size: 0.92em;
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+#search input[type="search"]::placeholder {
+  color: var(--muted);
+}
+
+#search input[type="search"]:focus {
+  border-color: var(--line-strong);
+}
+
+.actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.actions button {
+  padding: 0.55rem 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  background: var(--raised);
 }
 
 .hint {
-  margin: 1.25rem 0 0;
-  text-align: center;
+  margin: 1.5rem 0 0;
   font-size: 0.85rem;
+  color: var(--muted);
+}
+
+footer {
+  padding: 0.75rem 1.5rem 1rem;
+  text-align: center;
+}
+
+footer p {
+  margin: 0;
+  font-size: 0.78rem;
   color: var(--muted);
 }

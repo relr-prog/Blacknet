@@ -256,6 +256,9 @@ async function createWindow() {
     zoom: zoomStore,
     downloads,
     downloadsPath,
+    // The mutable settings store: read at query time so switching the search
+    // engine applies to the next search without a restart.
+    settings,
     // A Ctrl+F pressed while a page has the keyboard has to put the keyboard
     // into the chrome's find bar, which means focusing the chrome view itself.
     focusChrome: () => {

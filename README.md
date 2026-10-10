@@ -32,7 +32,7 @@ machine for; it never needed a second language runtime to do it.
 | Feature | State |
 | --- | --- |
 | Tabs, profiles, navigation, address bar | Working. Drag a tab sideways to reorder it (the strip previews the move, and the new order survives a restart); middle-click closes, `+` opens a fresh one. The Chrome keyboard layer is answered from both the page and the chrome: Ctrl+T new tab, Ctrl+W close, Ctrl+Tab / Ctrl+Shift+Tab cycle (wrapping), Ctrl+1..8 jump to that tab, Ctrl+9 to the last |
-| Search | Working. The shell's own meta-search, run in the main process: a query fans out to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub) and the merged, de-duplicated list is shown on a built-in results page. No third-party engine and no API key. It searches those named sources, not "the whole web" — indexing everything would mean scraping an engine, which is the dependency this removes |
+| Search | Working. The new-tab page is a clean search home (logo and box, no script). A query is answered by the shell's own meta-search by default: it fans out to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub), and the merged, de-duplicated list is shown on a built-in results page — no third-party engine and no API key. Settings > Search engine can opt into a normal engine (DuckDuckGo, Bing, Google): the query then navigates to that engine's results URL like any address, still behind the same URL policy and tracker blocklist. The default keeps queries on this machine; "the whole web" is never claimed |
 | Tracker blocking (56 rules) with a live per-tab count | Working |
 | Privacy grade (0-100) and host-level report, JSON export | Working, **not persisted** — it is cleared on exit |
 | Rotating proxy: start/stop, health probing, exit IP display | Working. Real rotation needs real provider credentials (see below) |
@@ -104,9 +104,13 @@ pool of healthy upstreams that all resolve to one address is reported as
   It is transmitted exactly once per step-up.
 - Ordinary web tabs get no preload at all. Only the shell's own pages and the
   password hook's remote-content exception get a bridge.
-- Search runs in the main process: a query goes to a fixed set of public APIs,
-  and only the merged list reaches the results page. That page is a plain file
-  with no bridge, so nothing a source returns can turn into a capability.
+- Search runs in the main process: by default a query goes to a fixed set of
+  public APIs, and only the merged list reaches the results page. That page is a
+  plain file with no bridge, so nothing a source returns can turn into a
+  capability. An opted-in external engine (Settings > Search engine) turns a
+  query into a normal navigation to that engine's fixed URL pattern; the engine
+  name comes from the settings schema, so a tampered value falls back to the
+  default rather than inventing a URL to visit.
 - Telemetry is host-level and in memory: no full URLs, paths or query strings are
   stored or exported. Search queries are not written to the session file either,
   because a saved session that reopens onto them is a search history.
@@ -137,8 +141,8 @@ shell on startup, before any of our code runs.
 ```sh
 cd netops-desktop
 npm install
-npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (343)
-npm run smoke                  # real Electron window, headless, 128 checks
+npm test                       # contrast check (palettes + every renderer CSS) + ctest (40) + node:test (350)
+npm run smoke                  # real Electron window, headless, 129 checks
 bash tools/check_syntax.sh     # JS syntax + the node:test suite + repo hygiene
 
 cd ../proxy-rotator
@@ -169,6 +173,23 @@ renderer crash.
 A stylesheet that inlines its colours instead of importing `palette.css` is
 therefore held to the same WCAG targets, and it self-tests on every run so a
 parsing change cannot turn the audit into a silent pass.
+
+## Windows installer
+
+`netops-desktop/tools/package-win.ps1` builds `BlackNet-Setup-<version>.exe`
+(NSIS, per-user, no admin) on Windows:
+
+- Prerequisites: Node + npm, CMake, and a MinGW-w64 toolchain (e.g. WinLibs)
+  with `mingw32-make`, `gendef` and `dlltool` on PATH. No Visual Studio needed:
+  the addon is pure N-API.
+- The script stages a clean copy of the repo (excluding `node_modules`, `build`,
+  `dist` and state), runs `npm ci`, fetches N-API headers with `node-gyp`,
+  builds the C++ policy addon with MinGW, and packages with electron-builder.
+  On Windows a DLL must resolve every symbol at link time, so the addon links an
+  import library generated from the packaged binary's own exports
+  (`BlackNet.exe`) instead of leaving N-API open like ELF and Mach-O may.
+- Output: `dist\BlackNet-Setup-0.1.0.exe` plus `dist\win-unpacked\BlackNet.exe`.
+- Silent install/uninstall: `BlackNet-Setup-0.1.0.exe /S`.
 
 ## Runtime files
 

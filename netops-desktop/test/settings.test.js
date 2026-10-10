@@ -29,6 +29,18 @@ test("scheme accepts only auto/light/dark", () => {
   assert.equal(settings.patch({ scheme: 42 }).scheme, "auto");
 });
 
+test("search engine accepts only the known engines, defaulting to blacknet", () => {
+  const settings = tempSettings();
+  assert.equal(settings.get("searchEngine"), "blacknet");
+  assert.equal(settings.patch({ searchEngine: "duckduckgo" }).searchEngine, "duckduckgo");
+  assert.equal(settings.patch({ searchEngine: "google" }).searchEngine, "google");
+  assert.equal(settings.patch({ searchEngine: "bing" }).searchEngine, "bing");
+  assert.equal(settings.patch({ searchEngine: "blacknet" }).searchEngine, "blacknet");
+  // An unknown engine is not a URL to visit: it falls back to the shell's own.
+  assert.equal(settings.patch({ searchEngine: "goolge" }).searchEngine, "blacknet");
+  assert.equal(settings.patch({ searchEngine: 42 }).searchEngine, "blacknet");
+});
+
 test("background and accent are validated as #rrggbb", () => {
   const settings = tempSettings();
   assert.equal(settings.patch({ background: "#123456" }).background, "#123456");

@@ -48,6 +48,14 @@ const SCHEMA = {
   // surprise, and it is separate from restoreSession so the two intents - "don't
   // reopen" and "don't keep anything" - are never conflated.
   clearOnExit: { type: "bool", default: false },
+  // Which engine answers an address-bar or new-tab query. "blacknet" is the
+  // shell's own meta-search and never leaves the machine; the others are plain
+  // web engines the operator opted into, routed as real navigations.
+  searchEngine: {
+    type: "enum",
+    values: ["blacknet", "duckduckgo", "bing", "google"],
+    default: "blacknet",
+  },
 
   // --- written by the shell, not the operator --------------------------------
   // IP Rotator master switch: false means "direct connection", whatever the pool

@@ -1487,6 +1487,35 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
     );
     await call("netops:tabs:close", searchTab.id);
 
+    // An operator who opts into an external engine in Settings gets a real
+    // navigation to that engine's results URL instead of the shell's page. The
+    // assertion is about routing, not load: the engine host appearing in the
+    // committed navigation proves the query went there rather than staying home.
+    const engineBefore = (await call("netops:settings:read")).searchEngine;
+    const engineWrite = await call("netops:settings:write", { searchEngine: "duckduckgo" });
+    check(
+      "the settings file accepts an external search engine",
+      engineWrite.searchEngine === "duckduckgo",
+      `engine ${engineWrite.searchEngine}`,
+    );
+    const engineTab = await call("netops:tabs:create");
+    const engineView = getViews().tab(engineTab.id);
+    const engineEntry = await call("netops:tabs:navigate", engineTab.id, "engine smoke query");
+    let engineUrl = "";
+    for (let i = 0; i < 80; i += 1) {
+      engineUrl = engineView.webContents.getURL() || "";
+      if (engineUrl.includes("duckduckgo.com")) break;
+      await sleep(100);
+    }
+    check(
+      "an external engine routes the query to its results URL",
+      Boolean(engineEntry) && engineEntry.url === "engine smoke query"
+        && engineUrl.includes("duckduckgo.com"),
+      `entry ${engineEntry ? engineEntry.url : "gone"}, navigating to ${engineUrl}`,
+    );
+    await call("netops:settings:write", { searchEngine: engineBefore });
+    await call("netops:tabs:close", engineTab.id);
+
     // Maximizing must carry the chrome and the page with it. Electron emits
     // "resize" before the new content size is committed, so a synchronous layout
     // handler used the pre-maximize width and left the tab strip short of the
