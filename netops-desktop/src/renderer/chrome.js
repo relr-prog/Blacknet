@@ -64,6 +64,10 @@ function renderTabs() {
     if (tab.crashed) element.classList.add("crashed");
     element.setAttribute("role", "tab");
     element.title = tab.url;
+    // The strip is rebuilt from state after every broadcast, so a reorder takes
+    // over the DOM while a drag is live and hands the final order back. The id
+    // is what a pointerup reads back out of the strip.
+    element.dataset.id = String(tab.id);
 
     if (tab.crashed) {
       // A renderer crash replaces the page with an explanation and leaves the tab
@@ -125,13 +129,91 @@ function renderTabs() {
     });
     element.append(close);
 
-    element.addEventListener("click", () => run(() => window.netops.tabs.activate(tab.id)));
+    element.addEventListener("click", () => {
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
+      run(() => window.netops.tabs.activate(tab.id));
+    });
     element.addEventListener("auxclick", (event) => {
       if (event.button === 1) run(() => window.netops.tabs.close(tab.id));
+    });
+    // A left press on the strip body (not the close button) can become a drag;
+    // the moved tab cycles over the live DOM and the final order is committed on
+    // release. A static press is just the click that activates the tab.
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      if (event.target.classList.contains("close")) return;
+      startTabDrag(event, element);
     });
     tabstrip.append(element);
   }
 }
+
+// --- tab drag reorder -------------------------------------------------------
+// A division of labour with the main process: the strip moves the tab through
+// the DOM while the pointer is down so the whole reorder is previewed live, and
+// on release it hands the new left-to-right id order to netops:tabs:reorder,
+// which is the only caller allowed to change the tab order. If nothing moved,
+// this is a non-event and the click that follows activates the tab as usual.
+
+let tabDrag = null; // { element, id, startX, active }
+let suppressClick = false;
+
+function startTabDrag(event, element) {
+  tabDrag = { element, id: Number(element.dataset.id), startX: event.clientX, active: false };
+  document.body.classList.add("tab-dragging");
+}
+
+function dropIndexFor(clientX) {
+  const elements = [...tabstrip.children];
+  for (let index = 0; index < elements.length; index += 1) {
+    const box = elements[index].getBoundingClientRect();
+    if (clientX < box.left + box.width / 2) return index;
+  }
+  return elements.length;
+}
+
+window.addEventListener("mousemove", (event) => {
+  if (!tabDrag) return;
+  if (!tabDrag.active) {
+    if (Math.abs(event.clientX - tabDrag.startX) < 4) return;
+    tabDrag.active = true;
+    tabDrag.element.classList.add("dragging");
+  }
+  event.preventDefault();
+  const elements = [...tabstrip.children];
+  const current = elements.indexOf(tabDrag.element);
+  const target = Math.min(dropIndexFor(event.clientX), elements.length - 1);
+  if (current === target) return;
+  tabstrip.removeChild(tabDrag.element);
+  const anchor = elements[target];
+  if (anchor && anchor !== tabDrag.element) tabstrip.insertBefore(tabDrag.element, anchor);
+  else tabstrip.append(tabDrag.element);
+});
+
+window.addEventListener("mouseup", () => {
+  if (!tabDrag) return;
+  const drag = tabDrag;
+  tabDrag = null;
+  document.body.classList.remove("tab-dragging");
+  drag.element.classList.remove("dragging");
+  if (!drag.active) return;
+  // The pointerup happens before the click that would otherwise activate the
+  // destination tab. A reorder must not change what is in front.
+  suppressClick = true;
+  const ids = [...tabstrip.children].map((entry) => Number(entry.dataset.id));
+  run(() => window.netops.tabs.reorder(ids));
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && tabDrag && tabDrag.active) {
+    tabDrag = null;
+    document.body.classList.remove("tab-dragging");
+    renderTabs(); // give the strip back its pre-drag order
+  }
+});
 
 function renderActive() {
   const active = state.tabs.find((tab) => tab.id === state.activeId);

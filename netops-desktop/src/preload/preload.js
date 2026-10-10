@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("netops", {
     create: (options) => ipcRenderer.invoke("netops:tabs:create", options),
     close: (id) => ipcRenderer.invoke("netops:tabs:close", id),
     activate: (id) => ipcRenderer.invoke("netops:tabs:activate", id),
+    reorder: (ids) => ipcRenderer.invoke("netops:tabs:reorder", ids),
     navigate: (id, url) => ipcRenderer.invoke("netops:tabs:navigate", id, url),
     go: (id, delta) => ipcRenderer.invoke("netops:tabs:go", id, delta),
     reload: (id, hard) => ipcRenderer.invoke("netops:tabs:reload", id, hard),

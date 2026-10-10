@@ -139,6 +139,34 @@ class Session {
     this.#persist();
   }
 
+  // The operator dragged the tab strip into a new arrangement. Restore reads the
+  // store in file order, so the slots are re-keyed to match: the new first tab
+  // gets slot 1, and a later #persist (which sorts by slot) can no longer undo
+  // the drag. Only tabs that are still restorable participate; anything bound to
+  // a slot that no longer maps to a live tab is dropped.
+  reorder(ids) {
+    if (!this.enabled) return;
+    const live = [];
+    for (const id of Array.isArray(ids) ? ids : []) {
+      const slot = this.restoredSlotFor(id);
+      if (slot !== null && this.slots.has(slot)) live.push(this.slots.get(slot));
+    }
+    const oldToNew = new Map();
+    this.slots.clear();
+    let slot = 1;
+    for (const entry of live) {
+      oldToNew.set(entry.slot, slot);
+      this.slots.set(slot, { slot, url: entry.url, profile: entry.profile });
+      slot += 1;
+    }
+    for (const [id, old] of this.slotFor.entries()) {
+      if (oldToNew.has(old)) this.slotFor.set(id, oldToNew.get(old));
+    }
+    this.nextSlot = slot;
+    if (this.activeSlot !== null) this.activeSlot = oldToNew.get(this.activeSlot) ?? null;
+    this.#persist();
+  }
+
   #persist() {
     this.store.set(
       "tabs",

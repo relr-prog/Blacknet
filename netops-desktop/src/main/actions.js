@@ -61,6 +61,7 @@ function createActions({ core, tabs, clipboard, settings, identity, passwords, i
     "netops:tabs:create": (options) => tabs.create(options || {}),
     "netops:tabs:close": (id) => tabs.close(id),
     "netops:tabs:activate": (id) => tabs.activate(id),
+    "netops:tabs:reorder": (ids) => tabs.reorder(ids),
     "netops:tabs:navigate": (id, url) => tabs.navigate(id, url),
     "netops:tabs:go": (id, delta) => tabs.go(id, delta),
     "netops:tabs:reload": (id, hard) => tabs.reload(id, hard),

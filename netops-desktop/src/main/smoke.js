@@ -1314,6 +1314,49 @@ async function runSmoke({ handlers, BrowserWindow, app, getViews, quit }) {
       await new Promise((resolve) => dlServer.close(resolve));
     }
 
+    // Tab drag reorder. The strip previews the move over the live DOM and hands
+    // the new left-to-right order back to the main process, which must accept it
+    // and re-render. Two fresh tabs make the drag unambiguous.
+    const reorderA = await call("netops:tabs:create", {});
+    const reorderB = await call("netops:tabs:create", {});
+    const orderBefore = (await call("netops:tabs:list")).map((tab) => tab.id);
+    const lastDragId = orderBefore[orderBefore.length - 1];
+    const want = [lastDragId, ...orderBefore.slice(0, -1)];
+    try {
+      // Drag the last tab ahead of the first: mousedown on the tab body, enough
+      // horizontal travel to cross the drag threshold, release over the front.
+      await chromeView.webContents.executeJavaScript(`(() => {
+        const b = [...document.querySelectorAll('#tabstrip .tab')].find((el) => Number(el.dataset.id) === ${lastDragId});
+        const front = document.querySelector('#tabstrip .tab');
+        const start = b.getBoundingClientRect().left + 4;
+        b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: start }));
+        window.dispatchEvent(new MouseEvent('mousemove', { clientX: start + 40 }));
+        window.dispatchEvent(new MouseEvent('mousemove', { clientX: front.getBoundingClientRect().left - 4 }));
+        window.dispatchEvent(new MouseEvent('mouseup', {}));
+      })()`);
+      await sleep(400);
+      const stripAfter = await chromeView.webContents.executeJavaScript(
+        "[...document.querySelectorAll('#tabstrip .tab')].map((el) => Number(el.dataset.id))",
+      );
+      check(
+        "dragging the last tab to the front reorders the strip",
+        JSON.stringify(stripAfter) === JSON.stringify(want),
+        `got ${JSON.stringify(stripAfter)} want ${JSON.stringify(want)}`,
+      );
+      const persisted = (await call("netops:tabs:list")).map((tab) => tab.id);
+      check(
+        "the reorder reached the main process",
+        JSON.stringify(persisted) === JSON.stringify(want),
+        `got ${JSON.stringify(persisted)} want ${JSON.stringify(want)}`,
+      );
+      // Put it back: the rest of the smoke assumes nothing about order, but a
+      // session saved mid-run should not remember a dragged arrangement.
+      await call("netops:tabs:reorder", orderBefore);
+    } finally {
+      await call("netops:tabs:close", reorderA.id);
+      await call("netops:tabs:close", reorderB.id);
+    }
+
     // The same refusal reached by following a link instead of typing it: the
     // request filter sees the navigation before Chromium builds it, so the tab
     // must end on the same explanation. And a refused name is not a tracker

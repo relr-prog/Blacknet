@@ -1288,6 +1288,28 @@ class TabManager {
     return this.active();
   }
 
+  // The tab strip was dragged into a new arrangement. The ids must be the same
+  // set in a new order: anything else means the renderer was working from a
+  // stale view, and committing it would drop or duplicate a tab silently.
+  reorder(ids) {
+    if (!Array.isArray(ids)) throw new Error("reorder needs the full tab list");
+    const current = new Set(this.order);
+    if (
+      ids.length !== this.order.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => !current.has(id))
+    ) {
+      throw new Error("reorder must be a permutation of the open tabs");
+    }
+    this.order = ids.slice();
+    if (this.sessionStore && typeof this.sessionStore.reorder === "function") {
+      this.sessionStore.reorder(ids);
+    }
+    this.#layout();
+    this.#broadcast();
+    return this.list();
+  }
+
   close(id) {
     const tab = this.tabs.get(id || this.activeId);
     if (!tab) return null;

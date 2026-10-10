@@ -76,6 +76,26 @@ body {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+/* Tab drag reorder. The strip moves the tab through the live DOM, so each
+   sibling slides aside to make room; the lifted tab is the only one that
+   scales. Selection is disabled while a drag is live so a sweep across the
+   strip cannot select a run of titles. */
+.tab {
+  transition: flex-basis 120ms ease, opacity 120ms ease;
+}
+
+body.tab-dragging {
+  user-select: none;
+}
+
+.tab.dragging {
+  z-index: 2;
+  flex-basis: 206px;
+  border-color: var(--accent);
+  opacity: 0.92;
+  box-shadow: 0 6px 16px var(--shadow);
+}
+
 .tab .title {
   flex: 1;
   overflow: hidden;
