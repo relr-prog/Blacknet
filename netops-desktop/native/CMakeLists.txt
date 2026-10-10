@@ -97,6 +97,22 @@ if(NETOPS_BUILD_ADDON)
     if(APPLE)
       set_target_properties(netops_node PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
     endif()
+    if(WIN32)
+      # A PE DLL must resolve every symbol at link time - Windows has no loose
+      # dynamic lookup the way ELF and Mach-O do. N-API is a stable C ABI, so
+      # all it needs is an import library of the symbols the host will export at
+      # runtime; linking it pulls no V8 and no libnode. Point NODE_IMPORT_LIB at
+      # a .lib generated from the process that loads the addon (node.exe for a
+      # plain Node build, electron.exe for Electron) - gendef + dlltool make one
+      # from the host binary. Without it the addon is not linkable on Windows.
+      if(NODE_IMPORT_LIB)
+        target_link_libraries(netops_node PRIVATE "${NODE_IMPORT_LIB}")
+      else()
+        message(WARNING
+          "native addon will not link on WIN32 without a node API import
+           library: configure with -DNODE_IMPORT_LIB=<host .lib>")
+      endif()
+    endif()
     if(MSVC)
       set_target_properties(netops_node PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_CURRENT_SOURCE_DIR}/../build/native)

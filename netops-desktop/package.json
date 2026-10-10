@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "BlackNet desktop browser: Electron shell, C++ native engine, Python control plane",
+  "author": "relr-prog <geraaaaan@gmail.com>",
   "main": "src/main/main.js",
   "scripts": {
     "install:electron": "node node_modules/electron/install.js",
@@ -15,12 +16,48 @@
     "test:contrast": "python3 tools/check_contrast.py",
     "start": "electron .",
     "dev": "electron . --dev",
-    "smoke": "electron . --smoke"
+    "smoke": "electron . --smoke",
+    "pack:win": "electron-builder --win nsis",
+    "pack:win:dir": "electron-builder --win dir"
   },
   "dependencies": {},
   "devDependencies": {
     "electron": "^44.5.1",
     "node-addon-api": "^8.3.0",
-    "node-gyp": "^11.0.0"
+    "node-gyp": "^11.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "io.blacknet.desktop",
+    "productName": "BlackNet",
+    "directories": {
+      "output": "dist"
+    },
+    "npmRebuild": false,
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "build/native/*.node",
+      "!test/**/*",
+      "!tools/**/*",
+      "!native/**/*"
+    ],
+    "asarUnpack": [
+      "build/native/*.node"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/blacknet.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "BlackNet-Setup-${version}.exe"
+    }
   }
 }
