@@ -124,6 +124,9 @@ class UrlTest {
     fun hostnamePolicyDefaults() {
         assertEquals("example.com", Url.validateHostname("EXAMPLE.COM"))
         assertEquals("[::1]", Url.validateHostname("[::1]"))
+        expectHostRefusal("[fe80::1]", "IPv6 literals are blocked")
+        expectHostRefusal("[fc00::1]", "IPv6 literals are blocked")
+        expectHostRefusal("[2001:4860:4860::8888]", "IPv6 literals are blocked")
 
         expectHostRefusal("localhost", "localhost is blocked by policy")
         expectHostRefusal("192.168.0.1", "private and loopback")
@@ -140,6 +143,7 @@ class UrlTest {
 
         assertEquals("localhost", Url.validateHostname("localhost", allowLocalhost = true))
         assertEquals("192.168.0.1", Url.validateHostname("192.168.0.1", allowPrivate = true))
+        assertEquals("[fc00::1]", Url.validateHostname("[fc00::1]", allowPrivate = true))
     }
 
     private fun expectHostRefusal(host: String, fragment: String) {
