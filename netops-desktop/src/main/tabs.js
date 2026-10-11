@@ -19,6 +19,7 @@ const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
 const { sanitizeFilename } = require("./downloads");
 const { shouldBlockForMissingProxy } = require("./proxy-fail-closed");
+const { isPermissionAllowed } = require("./permission-policy");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -1016,13 +1017,18 @@ class TabManager {
       && (url === BLOCK_PAGE_URL || url.startsWith(`${BLOCK_PAGE_URL}?`));
   }
 
-  // Permissions are opt-in, not opt-out.
+  // Permissions are opt-in, not opt-out. Keep the policy pure and shared by
+  // request/check handlers so tests can prove the default-deny behaviour.
   #applyPrivacy(targetSession) {
-    const allowed = new Set(this.config.defaultPermissions || []);
+    const configured = Array.isArray(this.config.defaultPermissions)
+      ? this.config.defaultPermissions
+      : [];
     targetSession.setPermissionRequestHandler((_wc, requested, callback) => {
-      callback(allowed.has(requested));
+      callback(isPermissionAllowed(configured, requested));
     });
-    targetSession.setPermissionCheckHandler((_wc, requested) => allowed.has(requested));
+    targetSession.setPermissionCheckHandler((_wc, requested) =>
+      isPermissionAllowed(configured, requested)
+    );
   }
 
   // The C++ pool picks the upstream for this profile; Chromium is told the
