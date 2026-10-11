@@ -11,7 +11,7 @@ const root = path.join(os.tmpdir(), "blacknet-renderer");
 const chrome = pathToFileURL(path.join(root, "chrome.html")).href;
 
 function event(url, { topFrame = true } = {}) {
-  const mainFrame = { url: chrome };
+  const mainFrame = { url: topFrame ? url : chrome };
   const senderFrame = topFrame ? mainFrame : { url };
   return { sender: { mainFrame }, senderFrame };
 }
