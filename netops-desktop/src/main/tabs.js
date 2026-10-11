@@ -324,10 +324,13 @@ class TabManager {
     // Loopback is allowed even though the URL policy blocks private ranges by
     // default: the proxy gateway the shell supervises lives there, and blocking it
     // would break the IP rotator from inside the browser that is using it.
-    if (parsed.host === "127.0.0.1" || parsed.host === "localhost" || parsed.host === "::1") {
+    if (parsed.host === "127.0.0.1" || parsed.host === "localhost" ||
+        parsed.host === "::1" || parsed.host === "[::1]") {
       return null;
     }
-    if (parsed.host.startsWith("[")) return null; // IPv6 literals are opt-in targets
+    // Fail closed for non-loopback IPv6 literals until the host policy can
+    // classify global, unique-local, link-local and IPv4-mapped addresses.
+    // This prevents bracketed addresses from bypassing blockPrivateHosts.
 
     if (this.config.blockPrivateHosts) {
       const check = this.native.validateHost(parsed.host);
