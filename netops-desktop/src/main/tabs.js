@@ -3,8 +3,7 @@
 // Tab manager built on WebContentsView. Tabs in one profile share that profile's
 // persistent Electron session partition (cookies, cache, and storage); profiles
 // are isolated from one another. Per-tab cookie/storage isolation is not implemented.
-// Every
-// request in every partition passes the C++ URL policy and tracker blocklist
+// All requests in each partition pass the C++ URL policy and tracker blocklist
 // before Chromium is allowed to open a socket.
 
 const { WebContentsView, session } = require("electron");
