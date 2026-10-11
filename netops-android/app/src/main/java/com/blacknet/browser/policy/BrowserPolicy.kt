@@ -36,11 +36,10 @@ data class BrowserPolicy(
         // there, and blocking it would break the IP rotator from inside the
         // browser that is using it.
         if (normalised.host == "127.0.0.1" || normalised.host == "localhost" ||
-            normalised.host == "::1"
+            normalised.host == "::1" || normalised.host == "[::1]"
         ) {
             return Verdict.Allowed(normalised)
         }
-        if (normalised.host.startsWith("[")) return Verdict.Allowed(normalised)
 
         if (blockPrivateHosts) {
             try {
