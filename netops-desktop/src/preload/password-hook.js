@@ -17,7 +17,7 @@
 //
 // If the password manager is switched off, main.js simply never loads this file.
 
-const { contextBridge, ipcRenderer } = require("electron");
+const { ipcRenderer } = require("electron");
 
 const MAX_URL = 300;
 const MAX_USER = 200;
@@ -111,7 +111,3 @@ function onClick(event) {
 document.addEventListener("submit", onSubmit, true);
 document.addEventListener("click", onClick, true);
 
-contextBridge.exposeInMainWorld("__blacknetPasswordHook", {
-  version: 1,
-  report: (payload) => ipcRenderer.send("netops:password-detected", payload || {}),
-});
