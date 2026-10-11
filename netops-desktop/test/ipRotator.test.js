@@ -7,7 +7,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { parsePorts, describe, rotationVerdict } = require("../src/main/ipRotator");
+const { parsePorts, describe, rotationVerdict, readUpstreams, redactLogLine } = require("../src/main/ipRotator");
 
 // The status payload shape the gateway actually returns, trimmed to what is read.
 function status(rows) {
@@ -150,4 +150,19 @@ test("unhealthy upstreams are left out of the exit count", () => {
   ]));
   assert.equal(verdict.distinctExitIps, 1);
   assert.equal(verdict.verdict, "single-exit");
+});
+test("proxy credentials are redacted from child logs and status diagnostics", () => {
+  const line = "failed https://alice:super-secret@proxy.example:8080 token=abc123 Authorization: Bearer xyz987";
+  const redacted = redactLogLine(line);
+  assert.equal(redacted.includes("super-secret"), false);
+  assert.equal(redacted.includes("alice"), false);
+  assert.equal(redacted.includes("abc123"), false);
+  assert.equal(redacted.includes("xyz987"), false);
+  assert.match(redacted, /\[REDACTED\]/);
+
+  const rows = readUpstreams({ upstreams: [{
+    id: "one", last_error: "connect failed https://bob:pw123@proxy.example:8080",
+  }] });
+  assert.equal(rows[0].lastError.includes("pw123"), false);
+  assert.equal(rows[0].lastError.includes("bob"), false);
 });

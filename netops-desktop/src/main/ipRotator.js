@@ -29,6 +29,15 @@ const STATUS_TIMEOUT_MS = 1500;
 // A disabled front end is logged as "-", which means "no such port".
 const LISTENING = /listening:\s*http=(\S+)\s+socks5=(\S+)\s+status=(\S+)/;
 
+// Child-process output and status diagnostics are untrusted. Remove common
+// credential forms before anything reaches logs or the renderer.
+function redactLogLine(value) {
+  return String(value || "")
+    .replace(/\b(https?|socks5h?|ftp):\/\/[^\s/@]+@/gi, "$1://[REDACTED]@")
+    .replace(/\b(bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [REDACTED]")
+    .replace(/\b(password|passwd|token|secret|api[_-]?key|authorization|username)\s*([=:])\s*("[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1$2[REDACTED]");
+}
+
 function candidateHomes() {
   const homes = [];
   if (process.env.IP_ROTATOR_HOME) homes.push(process.env.IP_ROTATOR_HOME);
@@ -130,7 +139,7 @@ class IPRotatorService {
         const ports = parsePorts(line);
         if (ports) this.ports = ports;
       }
-      this.log(`[ip-rotator] ${line}`);
+      this.log(`[ip-rotator] ${redactLogLine(line)}`);
     };
     this.child.stdout.on("data", (chunk) => {
       for (const line of chunk.toString().split("\n")) if (line.trim()) onLine(line.trimEnd());
@@ -276,7 +285,7 @@ function readUpstreams(body) {
     latencyMs: typeof row.latency_ms === "number" ? row.latency_ms : null,
     ok: Number(row.ok) || 0,
     fail: Number(row.fail) || 0,
-    lastError: row.last_error ? String(row.last_error) : null,
+    lastError: row.last_error ? redactLogLine(row.last_error) : null,
   }));
 }
 
@@ -346,5 +355,7 @@ module.exports = {
   findIPRotatorProject,
   parsePorts,
   describe,
+  readUpstreams,
   rotationVerdict,
+  redactLogLine,
 };

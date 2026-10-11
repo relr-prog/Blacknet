@@ -244,7 +244,15 @@ object Url {
             throw UrlException("host has an empty label")
         }
 
-        if (value[0] == '[') return value // IPv6 literals are opt-in targets
+        // IPv6 range classification is not implemented yet. Fail closed by
+        // default; the browser policy separately allows [::1] for its local
+        // loopback gateway. Explicitly opting into private hosts permits literals.
+        if (value[0] == '[') {
+            if (!allowPrivate && value != "[::1]") {
+                throw UrlException("IPv6 literals are blocked by policy unless private hosts are allowed")
+            }
+            return value
+        }
 
         if (isIpv4Literal(value)) {
             if (!allowPrivate && (isPrivateIpv4(value) || isLoopback(value))) {

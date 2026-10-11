@@ -1,0 +1,52 @@
+name: Security regression tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "codex/security-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop tests (Node + native C++)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: netops-desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install desktop dependencies
+        working-directory: netops-desktop
+        run: npm ci
+      - name: Configure native build
+        working-directory: netops-desktop
+        run: npm run configure:native
+      - name: Build native addon
+        working-directory: netops-desktop
+        run: npm run build:native
+      - name: Run desktop test suite
+        working-directory: netops-desktop
+        run: npm test
+
+  android:
+    name: Android unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run Android unit tests
+        working-directory: netops-android
+        run: ./gradlew testDebugUnitTest

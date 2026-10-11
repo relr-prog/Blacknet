@@ -1,8 +1,9 @@
 "use strict";
 
-// Tab manager built on WebContentsView. Each tab is an isolated Electron
-// session partition, so cookies, cache and storage are per profile; every
-// request in every partition passes the C++ URL policy and tracker blocklist
+// Tab manager built on WebContentsView. Tabs in one profile share that profile's
+// persistent Electron session partition (cookies, cache, and storage); profiles
+// are isolated from one another. Per-tab cookie/storage isolation is not implemented.
+// All requests in each partition pass the C++ URL policy and tracker blocklist
 // before Chromium is allowed to open a socket.
 
 const { WebContentsView, session } = require("electron");
@@ -18,6 +19,8 @@ const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
 const { sanitizeFilename } = require("./downloads");
+const { shouldBlockForMissingProxy } = require("./proxy-fail-closed");
+const { isPermissionAllowed } = require("./permission-policy");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -267,6 +270,23 @@ class TabManager {
         callback({ cancel: true });
         return;
       }
+      // If the operator explicitly enabled the rotating gateway, never let a
+      // missing/crashed gateway silently turn that profile into a direct connection.
+      // The check runs at the request boundary as well as at navigation time, so
+      // redirects, subresources, and restored tabs are covered too.
+      if (shouldBlockForMissingProxy({
+        wanted: this.ipRotator?.wanted === true,
+        proxyAvailable: Boolean(this.ipRotator?.proxy()),
+        url: details.url,
+        shellFile: this.#isShellFile(details.url),
+      })) {
+        const reason = "proxy gateway unavailable; direct connection blocked";
+        this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
+        this.#emit("netops:blocked", { profile, url: details.url, reason });
+        callback({ cancel: true });
+        return;
+      }
+
       const reason = this.#verdict(details.url, profile);
       if (reason) {
         this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
@@ -324,10 +344,13 @@ class TabManager {
     // Loopback is allowed even though the URL policy blocks private ranges by
     // default: the proxy gateway the shell supervises lives there, and blocking it
     // would break the IP rotator from inside the browser that is using it.
-    if (parsed.host === "127.0.0.1" || parsed.host === "localhost" || parsed.host === "::1") {
+    if (parsed.host === "127.0.0.1" || parsed.host === "localhost" ||
+        parsed.host === "::1" || parsed.host === "[::1]") {
       return null;
     }
-    if (parsed.host.startsWith("[")) return null; // IPv6 literals are opt-in targets
+    // Fail closed for non-loopback IPv6 literals until the host policy can
+    // classify global, unique-local, link-local and IPv4-mapped addresses.
+    // This prevents bracketed addresses from bypassing blockPrivateHosts.
 
     if (this.config.blockPrivateHosts) {
       const check = this.native.validateHost(parsed.host);
@@ -643,6 +666,10 @@ class TabManager {
   #wireTab(tab) {
     const wc = tab.view.webContents;
     this.tabByContents.set(wc.id, tab.id);
+    // Untrusted pages must not create unmanaged windows that bypass tab policy,
+    // profile/session accounting, and the browser chrome. Popups are denied until
+    // a controlled in-browser tab-opening flow is implemented.
+    wc.setWindowOpenHandler(() => ({ action: "deny" }));
 
     wc.on("page-title-updated", (_event, title) => {
       tab.title = title || tab.title;
@@ -995,13 +1022,18 @@ class TabManager {
       && (url === BLOCK_PAGE_URL || url.startsWith(`${BLOCK_PAGE_URL}?`));
   }
 
-  // Permissions are opt-in, not opt-out.
+  // Permissions are opt-in, not opt-out. Keep the policy pure and shared by
+  // request/check handlers so tests can prove the default-deny behaviour.
   #applyPrivacy(targetSession) {
-    const allowed = new Set(this.config.defaultPermissions || []);
+    const configured = Array.isArray(this.config.defaultPermissions)
+      ? this.config.defaultPermissions
+      : [];
     targetSession.setPermissionRequestHandler((_wc, requested, callback) => {
-      callback(allowed.has(requested));
+      callback(isPermissionAllowed(configured, requested));
     });
-    targetSession.setPermissionCheckHandler((_wc, requested) => allowed.has(requested));
+    targetSession.setPermissionCheckHandler((_wc, requested) =>
+      isPermissionAllowed(configured, requested)
+    );
   }
 
   // The C++ pool picks the upstream for this profile; Chromium is told the

@@ -11,7 +11,7 @@
     "build:native": "cmake --build build --parallel",
     "rebuild:native": "npm run configure:native && npm run build:native",
     "test:core": "ctest --test-dir build --output-on-failure",
-    "test:addon": "node --test test/",
+    "test:addon": "node --test",
     "test": "npm run test:contrast && npm run test:core && npm run test:addon",
     "test:contrast": "python3 tools/check_contrast.py",
     "start": "electron .",

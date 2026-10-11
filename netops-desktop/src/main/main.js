@@ -28,6 +28,7 @@ const { IPRotatorService } = require("./ipRotator");
 const { CrSelfCheck } = require("./crSelfCheck");
 const { apply: applyHardening } = require("./hardening");
 const { pinEnvironment } = require("./timezone");
+const { isTrustedUiSender } = require("./trusted-sender");
 
 // Chromium reads its command line once, at startup, so the hardening switches
 // are applied here - before the app is ready, not from a window or a service.
@@ -461,6 +462,11 @@ clipboard: clipboardBridge,
   for (const [channel, fn] of Object.entries(actions)) {
     const wrapped = async (_event, ...args) => {
       try {
+        // The internal helper map invokes this with null in unit/smoke tests.
+        // Real IPC must originate from the top-level local chrome/internal UI.
+        if (_event && !isTrustedUiSender(_event, path.join(__dirname, "..", "renderer"))) {
+          throw new Error("untrusted IPC sender");
+        }
         return { ok: true, data: await fn(...args) };
       } catch (error) {
         return { ok: false, error: error.message };
