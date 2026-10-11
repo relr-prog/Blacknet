@@ -1,7 +1,9 @@
 "use strict";
 
-// Tab manager built on WebContentsView. Each tab is an isolated Electron
-// session partition, so cookies, cache and storage are per profile; every
+// Tab manager built on WebContentsView. Tabs in one profile share that profile's
+// persistent Electron session partition (cookies, cache, and storage); profiles
+// are isolated from one another. Per-tab cookie/storage isolation is not implemented.
+// Every
 // request in every partition passes the C++ URL policy and tracker blocklist
 // before Chromium is allowed to open a socket.
 
