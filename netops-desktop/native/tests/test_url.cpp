@@ -124,6 +124,10 @@ NETOPS_TEST(host_validation_blocks_private_ranges) {
     EXPECT_FALSE(validate_hostname("localhost", policy).has_value());
     EXPECT_FALSE(validate_hostname("printer.local", policy).has_value());
     EXPECT_FALSE(validate_hostname("db.internal", policy).has_value());
+    EXPECT_FALSE(validate_hostname("[fe80::1]", policy).has_value());
+    EXPECT_FALSE(validate_hostname("[fc00::1]", policy).has_value());
+    EXPECT_FALSE(validate_hostname("[2001:4860:4860::8888]", policy).has_value());
+    EXPECT_TRUE(validate_hostname("[::1]", policy).has_value());
 
     UrlError error;
     validate_hostname("192.168.1.5", policy, &error);
@@ -136,6 +140,7 @@ NETOPS_TEST(host_validation_allows_private_when_opted_in) {
     EXPECT_TRUE(validate_hostname("127.0.0.1", policy).has_value());
     EXPECT_TRUE(validate_hostname("192.168.1.5", policy).has_value());
     EXPECT_TRUE(validate_hostname("localhost", policy).has_value());
+    EXPECT_TRUE(validate_hostname("[fc00::1]", policy).has_value());
 
     HostPolicy localhost_only;
     localhost_only.allow_localhost = true;
