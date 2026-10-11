@@ -143,7 +143,7 @@ class TabManager(
             allowFileAccess = false
             allowContentAccess = false
             setSupportMultipleWindows(false)
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webView.webViewClient = BrowserWebViewClient(tab, policy, assetLoader, this)
         webView.webChromeClient = object : WebChromeClient() {
