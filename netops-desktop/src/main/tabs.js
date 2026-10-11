@@ -18,6 +18,7 @@ const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
 const { sanitizeFilename } = require("./downloads");
+const { shouldBlockForMissingProxy } = require("./proxy-fail-closed");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -271,14 +272,12 @@ class TabManager {
       // missing/crashed gateway silently turn that profile into a direct connection.
       // The check runs at the request boundary as well as at navigation time, so
       // redirects, subresources, and restored tabs are covered too.
-      const gatewayRequired = this.ipRotator?.wanted === true;
-      const gatewayAvailable = Boolean(this.ipRotator?.proxy());
-      if (
-        gatewayRequired &&
-        !gatewayAvailable &&
-        !NON_NETWORK_SCHEME.test(details.url) &&
-        !this.#isShellFile(details.url)
-      ) {
+      if (shouldBlockForMissingProxy({
+        wanted: this.ipRotator?.wanted === true,
+        proxyAvailable: Boolean(this.ipRotator?.proxy()),
+        url: details.url,
+        shellFile: this.#isShellFile(details.url),
+      })) {
         const reason = "proxy gateway unavailable; direct connection blocked";
         this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
         this.#emit("netops:blocked", { profile, url: details.url, reason });
