@@ -279,7 +279,15 @@ std::optional<std::string> validate_hostname(std::string_view host, const HostPo
     if (value.size() > 253) return fail("host is longer than 253 characters");
     if (value.front() == '.' || value.back() == '.') return fail("host has an empty label");
 
-    if (value.front() == '[') return value;  // IPv6 literals are opt-in targets
+    // Until IPv6 address ranges are classified, permit literals only when the
+    // operator explicitly opts into private hosts. The browser policy handles
+    // [::1] separately as its local loopback exception.
+    if (value.front() == '[') {
+        if (!policy.allow_private && value != "[::1]") {
+            return fail("IPv6 literals are blocked by policy unless private hosts are allowed");
+        }
+        return value;
+    }
 
     if (is_ipv4_literal(value)) {
         if (!policy.allow_private && (is_private_ipv4(value) || is_loopback(value))) {
