@@ -39,6 +39,9 @@ class BrowserPolicyTest {
         assertEquals(BrowserPolicy.Kind.HostPolicy, refused("10.1.2.3:8080").kind)
         assertEquals(BrowserPolicy.Kind.HostPolicy, refused("foo.local").kind)
         assertEquals(BrowserPolicy.Kind.HostPolicy, refused("router.lan").kind)
+        assertEquals(BrowserPolicy.Kind.HostPolicy, refused("https://[fe80::1]/").kind)
+        assertEquals(BrowserPolicy.Kind.HostPolicy, refused("https://[fc00::1]/").kind)
+        assertEquals(BrowserPolicy.Kind.HostPolicy, refused("https://[2001:4860:4860::8888]/").kind)
     }
 
     @Test
