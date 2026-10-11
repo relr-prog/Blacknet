@@ -665,6 +665,10 @@ class TabManager {
   #wireTab(tab) {
     const wc = tab.view.webContents;
     this.tabByContents.set(wc.id, tab.id);
+    // Untrusted pages must not create unmanaged windows that bypass tab policy,
+    // profile/session accounting, and the browser chrome. Popups are denied until
+    // a controlled in-browser tab-opening flow is implemented.
+    wc.setWindowOpenHandler(() => ({ action: "deny" }));
 
     wc.on("page-title-updated", (_event, title) => {
       tab.title = title || tab.title;
