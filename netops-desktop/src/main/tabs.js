@@ -267,6 +267,25 @@ class TabManager {
         callback({ cancel: true });
         return;
       }
+      // If the operator explicitly enabled the rotating gateway, never let a
+      // missing/crashed gateway silently turn that profile into a direct connection.
+      // The check runs at the request boundary as well as at navigation time, so
+      // redirects, subresources, and restored tabs are covered too.
+      const gatewayRequired = this.ipRotator?.wanted === true;
+      const gatewayAvailable = Boolean(this.ipRotator?.proxy());
+      if (
+        gatewayRequired &&
+        !gatewayAvailable &&
+        !NON_NETWORK_SCHEME.test(details.url) &&
+        !this.#isShellFile(details.url)
+      ) {
+        const reason = "proxy gateway unavailable; direct connection blocked";
+        this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
+        this.#emit("netops:blocked", { profile, url: details.url, reason });
+        callback({ cancel: true });
+        return;
+      }
+
       const reason = this.#verdict(details.url, profile);
       if (reason) {
         this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
