@@ -355,5 +355,7 @@ module.exports = {
   findIPRotatorProject,
   parsePorts,
   describe,
+  readUpstreams,
   rotationVerdict,
+  redactLogLine,
 };
