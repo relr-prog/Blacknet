@@ -10,9 +10,10 @@
 //
 // An operator may opt into a plain web engine (DuckDuckGo, Bing, Google) from
 // Settings; that just makes a query a real navigation to that engine's results
-// URL - ENGINES below - instead of this page. The default keeps queries on this
-// machine, and every engine URL is built only from a fixed host and the encoded
-// query, so nothing from a page can smuggle an argument into it.
+// URL - ENGINES below - instead of this page. Queries are sent to these public
+// APIs; the default avoids a general-purpose search engine but is not local-only.
+// Every engine URL is built only from a fixed host and the encoded query, so
+// nothing from a page can smuggle an argument into it.
 //
 // Coverage is honest: this searches the sources listed below, not "the whole
 // web". Indexing the whole web would mean scraping a commercial engine, which is

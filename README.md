@@ -1,51 +1,62 @@
 # BlackNet
 
-A browser with a rotating proxy, a tracker counter, and a password vault that
-needs an OS key rather than an account. One policy, two shells: the desktop
-build and an Android build on the system WebView.
+BlackNet is an experimental browser project with desktop and Android shells,
+request blocking, an optional separately run proxy gateway, and a local
+credential vault. Its privacy controls are limited and are not an anonymity
+system; see the [threat model](#threat-model) before relying on them.
 
 | Path | What it is | Runtime |
 | --- | --- | --- |
-| `netops-desktop/` | The browser. Tabs, chrome, settings, vault, telemetry, and supervision of the proxy gateway | Electron 44 (Chromium 152) + a C++20 N-API policy addon |
-| `netops-android/` | The same browser for Android. Tabs, address bar, the same tracker rules, the same refusal page | Kotlin + Android System WebView (minSdk 26) |
-| `proxy-rotator/` | The rotating upstream proxy the browser can route through | Python 3.11+ |
-| `netops/` | **Retired.** The old Python control plane. Nothing in the desktop shell reads it | Unused |
+| `netops-desktop/` | Desktop browser shell: tabs, settings, vault, request policy, and optional proxy supervision | Electron 44 (Chromium 152) + a C++20 N-API policy addon |
+| `netops-android/` | Android browser shell with a separately implemented policy port | Kotlin + Android System WebView (minSdk 26) |
+| `proxy-rotator/` | Optional rotating proxy gateway; requires operator-provided upstreams | Python 3.11+ |
+| `netops/` | Separate legacy Python application, retained with its own service, imports, and tests; not launched by the desktop shell | Python |
 
-## What actually runs
+## Runtime overview
 
-Two processes, and nothing else:
+The desktop shell runs the native policy addon in-process. If the operator
+enables the rotator, it launches the separate Python gateway:
 
 ```
-Electron shell ── spawns ──> rotator serve -c rotator.toml
+Electron shell ── optionally spawns ──> rotator serve -c rotator.toml
      │                          │
      │ HTTP 8888 / SOCKS5 1080 <-┘  (the browser's proxy)
      │ HTTP 9099 /status  <───────  (health, exit IPs)
      └── C++ addon: URL policy, tracker blocklist, cookies, cache index
 ```
 
-There is no Python in the browser process, no uvicorn, no localhost web server,
-and no dashboard. Switching the proxy on is a switch the operator owns the
-machine for; it never needed a second language runtime to do it.
+The rotator is optional and proxying is not enabled by default; without an
+explicit proxy configuration, browser traffic may go directly to the network.
+The desktop shell does not use the legacy `netops/` application, and does not
+start a localhost dashboard or control-plane web server. The default search
+submits queries from the main process to the public APIs listed in
+[`search.js`](netops-desktop/src/main/search.js); it is not local-only search.
+
+## Screenshot
+
+The desktop new-tab page content (the browser toolbar is not shown):
+
+![BlackNet desktop new-tab search page](docs/newtab.png)
 
 ## Features, and how far each one is honestly finished
 
 | Feature | State |
 | --- | --- |
 | Tabs, profiles, navigation, address bar | Working. Drag a tab sideways to reorder it (the strip previews the move, and the new order survives a restart); middle-click closes, `+` opens a fresh one. The Chrome keyboard layer is answered from both the page and the chrome: Ctrl+T new tab, Ctrl+W close, Ctrl+Tab / Ctrl+Shift+Tab cycle (wrapping), Ctrl+1..8 jump to that tab, Ctrl+9 to the last |
-| Search | Working. The new-tab page is a clean search home (logo and box, no script). A query is answered by the shell's own meta-search by default: it fans out to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub), and the merged, de-duplicated list is shown on a built-in results page — no third-party engine and no API key. Settings > Search engine can opt into a normal engine (DuckDuckGo, Bing, Google): the query then navigates to that engine's results URL like any address, still behind the same URL policy and tracker blocklist. The default keeps queries on this machine; "the whole web" is never claimed |
+| Search | Working. The new-tab page is a clean search home. By default, the main process sends each query to public, keyless JSON APIs (Wikipedia, Hacker News, Stack Overflow, GitHub) and displays merged results in a built-in page. Those services receive the query. Settings > Search engine can instead route it to DuckDuckGo, Bing, or Google. The default is limited to those sources; it does not search the whole web |
 | Tracker blocking (56 rules) with a live per-tab count | Working |
 | Privacy grade (0-100) and host-level report, JSON export | Working, **not persisted** — it is cleared on exit |
-| Rotating proxy: start/stop, health probing, exit IP display | Working. Real rotation needs real provider credentials (see below) |
+| Rotating proxy: start/stop, health probing, exit IP display | Optional and off by default. Real rotation needs provider credentials and more than one distinct healthy exit IP (see below); otherwise traffic may be direct |
 | Encrypted vault, per-record AES-256-GCM | Working |
-| OS step-up: Windows Hello + DPAPI, macOS Touch ID, Linux sudo | Implemented. Windows and Linux paths are hard to verify in a headless environment |
+| OS step-up: Windows Hello + DPAPI, macOS system authorization prompt, Linux sudo | Implemented with platform-specific paths; native-device validation is still needed |
 | Session restore | Working. Stores URLs and the active tab, nothing else; opt out in Settings |
 | Settings schema | One typed table; reads and writes validated identically |
 | `.onion` addresses refused before any request | Working. The tab keeps the address and shows a "site can't be reached" page; the rule is main-process knowledge and is never put on the IPC map |
 | Shell-side circuit self-check | Working, off by default. The shell's own client proves the local circuit carries a request instead of trusting an open port; main-process only and never on the IPC map |
-| Chromium hardening defaults (LibreWolf-aligned) | Working. `no-pings`, referrers stripped (the `NoReferrers` feature, since Chromium has no switch for it), WebRTC non-proxied UDP refused, background networking off. The rest of LibreWolf's privacy defaults are already this shell's own policy (see config) |
+| Selected Chromium hardening | Enables `no-pings`, the `NoReferrers` and `ThirdPartyStoragePartitioning` features, disables non-proxied WebRTC UDP, and disables background networking. These selected controls are not equivalent to LibreWolf's full set of protections |
 | Clock pinned to UTC | Working, best-effort. `Date.getTimezoneOffset` and `Intl.DateTimeFormat().resolvedOptions().timeZone` answer UTC in every tab, injected at document start into the page's own world (no preload, so the no-bridge rule holds) and the process `TZ` is set at startup. Engine-level formatting paths are out of reach, so it is one switch among many rather than a guarantee |
-| Letterboxing | Working. The page viewport is rounded down to Tor's 200 x 100 grid and centered, so two windows a few pixels apart report the same size and it stops being a fingerprint; the address bar keeps the full window width. Toggle: `config.letterbox` |
-| First-party storage isolation | Working, as far as Chromium offers it. The `ThirdPartyStoragePartitioning` feature keys third-party storage (IndexedDB, CacheStorage, etc.) by the top-level site, so an embedded origin cannot reuse its per-origin storage to track the operator across sites - Chromium's equivalent of Tor's first-party isolation. The per-profile partition remains the outer boundary |
+| Letterboxing | Working. The page viewport is rounded down to a configurable 200 x 100 grid and centered; this reduces variation in reported viewport dimensions but does not prevent fingerprinting. The address bar keeps the full window width |
+| Third-party storage partitioning | Requests Chromium's `ThirdPartyStoragePartitioning` feature to key supported third-party storage by top-level site. This is limited to Chromium's implementation and is not a guarantee of Tor-style first-party isolation |
 | New Identity & clear-on-exit | Working. New Identity closes every tab and wipes cookies, cache and HTTP auth for every profile in use, then opens one blank tab; clear-on-exit runs the same wipe when the browser quits. Off by default, and deliberately not a loop over tab-close, which would race the erase by opening a replacement tab |
 | Bookmarks (star + bar) | Working. The star in the address bar bookmarks the active `http(s)` page and fills a Chrome-style bookmarks bar below the toolbar; the bar reports its own height so the page below is pushed down instead of overlapped. Right-click a bar item to remove it. Stored in `bookmarks.json`, kept separate from the restorable session |
 | Find in page | Working. Ctrl+F opens a find bar below the toolbar, focuses its box and counts matches as they arrive (`n/m`, or "no matches"); Enter and the arrows step forward and back, Escape closes it. The bar reports its own height so the page moves down, and the highlight is cleared when the tab is left. Caught in the main process while a page holds the keyboard |
@@ -56,6 +67,63 @@ machine for; it never needed a second language runtime to do it.
 
 Not built, and not pretending to be: per-site fingerprint profiles, request
 rewriting, a shared fingerprint marketplace, any AI layer.
+
+Desktop browsing history and browser extensions are not implemented. Android
+has a separate local history feature; this does not imply desktop history support.
+
+## Threat model
+
+BlackNet's controls are intended to reduce some routine browser risks. They are
+not a promise of anonymity, complete tracking prevention, or protection from a
+compromised device.
+
+### Implemented protections
+
+- Applies URL, host, and tracker rules in the desktop native policy layer and
+  an independently implemented policy in the Android shell. The desktop
+  built-in tracker list contains 56 patterns; it is not EasyList or EasyPrivacy.
+- Refuses `.onion` destinations rather than connecting to them. This browser
+  does not provide Tor routing.
+- Denies browser permissions by default and applies Chromium settings intended
+  to limit non-proxied WebRTC UDP, cross-site referrers, and third-party storage.
+- Provides a credential vault using AES-256-GCM, a fresh 96-bit IV per record,
+  and associated data bound to the record id, origin, and username. Unlocking
+  requires the configured platform step-up path.
+- Offers optional clear-on-exit for cookies, cache, and site storage. It is
+  off by default; session restore is separately enabled by default and stores
+  open tab URLs.
+
+### What it does not protect against
+
+- **Direct network exposure:** proxying is optional and off by default.
+  Provider credentials and a working gateway are the operator's responsibility.
+  The current implementation has not been verified to provide a complete
+  fail-closed guarantee or prevent DNS leaks in every configuration. A proxy
+  provider can observe connection metadata and unencrypted traffic.
+- **Anonymity and correlation:** BlackNet is not Tor Browser. It does not
+  provide onion routing, network-wide anonymity, traffic-analysis resistance,
+  or a guarantee that sites cannot identify a user.
+- **Fingerprinting:** UTC pinning and letterboxing cover selected browser
+  surfaces only. They do not make devices indistinguishable and are not a
+  comprehensive fingerprinting defense.
+- **Complete tracker blocking:** the built-in list is small and finite. It can
+  miss trackers or block legitimate requests; it is not a maintained,
+  automatically updated community filter list.
+- **A compromised OS or local account:** malware, a malicious administrator,
+  or someone with access to an unlocked desktop session may access browser
+  data. Profile storage, cookies, and cached site data are not represented as
+  encrypted by the credential-vault guarantees.
+- **Data retention by default:** desktop session restore is enabled by default,
+  and clear-on-exit is opt-in. The Android history is stored locally until
+  cleared. Search queries are sent to the configured public APIs or selected
+  external search engine.
+- **Device-specific guarantees:** Android uses the system WebView, and a
+  physical-device test has not been reported. Windows and Linux step-up paths
+  also need platform-specific validation beyond unit tests.
+
+These boundaries describe the checked-in implementation, not a security
+certification. See [`docs/AUDIT.md`](docs/AUDIT.md) for the repository audit
+snapshot and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ## Proxy credentials
 
@@ -94,9 +162,10 @@ pool of healthy upstreams that all resolve to one address is reported as
 
 - Vault records: AES-256-GCM, fresh 96-bit IV per record, AAD bound to storage id,
   origin and username. Listing entries never decrypts.
-- The vault key is generated by the OS, not derived from a password: Windows Hello
-  (a presence check, DPAPI at rest), macOS Touch ID via the keychain, or on Linux a
-  sudo step-up ending in root reading a `0600` root-owned key file.
+- The vault key is not derived from a password: Windows uses a Hello presence
+  check and DPAPI at rest; macOS uses a system authorization prompt; Linux uses
+  sudo to read a `0600` root-owned key file. Native platform flows need
+  end-to-end validation; the macOS vault-key path is not verified here.
 - Step-up is required to reveal or copy, not to list.
 - Password capture is one-way and origin-validated; the page's own URL is all the
   hook may observe. Private and loopback origins are refused.

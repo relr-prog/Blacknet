@@ -2,7 +2,7 @@
   "name": "blacknet-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "BlackNet desktop browser: Electron shell, C++ native engine, Python control plane",
+  "description": "BlackNet desktop browser: Electron shell and C++ native policy addon",
   "author": "relr-prog <geraaaaan@gmail.com>",
   "main": "src/main/main.js",
   "scripts": {
