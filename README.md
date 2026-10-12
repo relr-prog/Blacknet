@@ -98,8 +98,10 @@ compromised device.
 - **Direct network exposure:** proxying is optional and off by default.
   Provider credentials and a working gateway are the operator's responsibility.
   The current implementation has not been verified to provide a complete
-  fail-closed guarantee or prevent DNS leaks in every configuration. A proxy
-  provider can observe connection metadata and unencrypted traffic.
+  DNS-leak guarantee in every configuration. When the rotator is explicitly
+  enabled, the desktop blocks web requests if its gateway is unavailable or
+  not applied to the tab. A proxy provider can observe connection metadata and
+  unencrypted traffic. See the [manual proxy leak check](docs/PROXY-LEAK-CHECK.md).
 - **Anonymity and correlation:** BlackNet is not Tor Browser. It does not
   provide onion routing, network-wide anonymity, traffic-analysis resistance,
   or a guarantee that sites cannot identify a user.

@@ -18,6 +18,7 @@ const { attach: attachClock } = require("./timezone");
 const { box: letterbox } = require("./letterbox");
 const { originOf, DEFAULT: ZOOM_DEFAULT } = require("./zoom");
 const { sanitizeFilename } = require("./downloads");
+const { shouldBlockForMissingProxy } = require("./proxy-fail-closed");
 
 // The page shown instead of a load this browser refuses, and the file URL it is
 // served from - so a commit of that page is recognisable and does not clear the
@@ -267,6 +268,21 @@ class TabManager {
         callback({ cancel: true });
         return;
       }
+      const tab = this.#tabFor(details.webContentsId);
+      const requestedProxy = this.ipRotator && this.ipRotator.proxy();
+      if (shouldBlockForMissingProxy({
+        wanted: this.ipRotator?.wanted === true,
+        proxyAvailable: Boolean(requestedProxy),
+        proxyApplied: Boolean(tab && requestedProxy && tab.proxy === requestedProxy),
+        url: details.url,
+        shellFile: this.#isShellFile(details.url),
+      })) {
+        const reason = "proxy gateway unavailable; direct connection blocked";
+        this.#emit("netops:blocked", { profile, url: details.url, reason });
+        callback({ cancel: true });
+        return;
+      }
+
       const reason = this.#verdict(details.url, profile);
       if (reason) {
         this.#countBlocked(details.webContentsId, details.url, reason, isMainFrame);
@@ -1010,6 +1026,10 @@ class TabManager {
   // IP per request rather than per profile.
   #applyProxy(tab) {
     const gateway = this.ipRotator ? this.ipRotator.proxy() : null;
+    if (this.ipRotator?.wanted === true && !gateway) {
+      tab.proxy = null;
+      return;
+    }
     let rules = gateway;
     if (!rules) {
       const upstream = this.native.pickUpstream(tab.profile);
